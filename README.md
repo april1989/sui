@@ -18,4 +18,7 @@ The test case is at `crates/sui/tests/reconfiguration_tests.rs`, and run by:
 cargo simtest test_create_advance_epoch_tx_race
 ```
 
+### Use `LOCAL_MSIM_PATH`
 
+Run `LOCAL_MSIM_PATH=/path/to/your-mysten-sim-repo cargo simtest` in sui so that you can test against local changes to mysten-sim without pushing it to git every time.
+Or add to your environment variable.
