@@ -29,13 +29,18 @@ LOCAL_MSIM_PATH=/path/to/your-mysten-sim-repo cargo simtest
 Then it will start to run sim tests.
 
 Always run `LOCAL_MSIM_PATH=/path/to/your-mysten-sim-repo cargo simtest` in sui so that you can test against local changes to mysten-sim without pushing it to git every time.
+Use `RUST_BACKTRACE=1` to display a backtrace.
 Or add it to your environment variable. e.g.,
 ```shell
-MSIM_TEST_SEED=1 LOCAL_MSIM_PATH=/Users/bozhen/Documents/Sui-Proj/mysten-sim cargo simtest test_create_advance_epoch_tx_race
+MSIM_TEST_SEED=1 LOCAL_MSIM_PATH=/Users/bozhen/Documents/Sui-Proj/mysten-sim RUST_BACKTRACE=1 cargo simtest test_create_advance_epoch_tx_race
 ```
 
 
 
 
+
+
+
+
 ### Note
-1. remove `.await` from `crates/sui-macros/src/lib.rs:150` due to compiler error.
+1. (tmp) remove `.await` from `crates/sui-macros/src/lib.rs:150` due to compiler error.
