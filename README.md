@@ -18,7 +18,24 @@ The test case is at `crates/sui/tests/reconfiguration_tests.rs`, and run by:
 cargo simtest test_create_advance_epoch_tx_race
 ```
 
-### Use `LOCAL_MSIM_PATH`
+### How to install and Use `LOCAL_MSIM_PATH`
 
-Run `LOCAL_MSIM_PATH=/path/to/your-mysten-sim-repo cargo simtest` in sui so that you can test against local changes to mysten-sim without pushing it to git every time.
-Or add to your environment variable.
+Install msim (simtest):
+```shell
+cd sui
+./scripts/simtest/install.sh
+LOCAL_MSIM_PATH=/path/to/your-mysten-sim-repo cargo simtest
+```
+Then it will start to run sim tests.
+
+Always run `LOCAL_MSIM_PATH=/path/to/your-mysten-sim-repo cargo simtest` in sui so that you can test against local changes to mysten-sim without pushing it to git every time.
+Or add it to your environment variable. e.g.,
+```shell
+MSIM_TEST_SEED=1 LOCAL_MSIM_PATH=/Users/bozhen/Documents/Sui-Proj/mysten-sim cargo simtest test_create_advance_epoch_tx_race
+```
+
+
+
+
+### Note
+1. remove `.await` from `crates/sui-macros/src/lib.rs:150` due to compiler error.
