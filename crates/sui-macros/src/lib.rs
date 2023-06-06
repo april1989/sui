@@ -147,7 +147,7 @@ macro_rules! fail_point_async {
 #[macro_export]
 macro_rules! instrumented_yield {
     () => {
-        sui_simulator::task::instrumented_yield()//.await -> bz: removed due to compiler error
+        sui_simulator::task::instrumented_yield().await 
     };
 }
 
