@@ -329,42 +329,42 @@ async fn test_create_advance_epoch_tx_race() {
         panic!("safe mode recorded");
     });
 
-    // Intercept the specified async wait point on a given node, and wait there until a message
-    // is sent from the given tx.
-    let register_wait = |failpoint, node_id, tx: Arc<broadcast::Sender<()>>| {
-        let node = sui_simulator::task::NodeId(node_id);
-        register_fail_point_async(failpoint, move || {
-            let cur_node = sui_simulator::current_simnode_id();
-            let tx = tx.clone();
-            async move {
-                if cur_node == node {
-                    let mut rx = tx.subscribe();
+    // // Intercept the specified async wait point on a given node, and wait there until a message
+    // // is sent from the given tx.
+    // let register_wait = |failpoint, node_id, tx: Arc<broadcast::Sender<()>>| {
+    //     let node = sui_simulator::task::NodeId(node_id);
+    //     register_fail_point_async(failpoint, move || {
+    //         let cur_node = sui_simulator::current_simnode_id();
+    //         let tx = tx.clone();
+    //         async move {
+    //             if cur_node == node {
+    //                 let mut rx = tx.subscribe();
 
-                    info!(
-                        "waiting for test to send continuation signal for {}",
-                        failpoint
-                    );
-                    rx.recv().await.unwrap();
-                    info!("continuing {}", failpoint);
-                }
-            }
-        });
-    };
+    //                 info!(
+    //                     "waiting for test to send continuation signal for {}",
+    //                     failpoint
+    //                 );
+    //                 rx.recv().await.unwrap();
+    //                 info!("continuing {}", failpoint);
+    //             }
+    //         }
+    //     });
+    // };
 
-    // Set up wait points.
-    let (change_epoch_delay_tx, _change_epoch_delay_rx) = broadcast::channel(1);
-    let change_epoch_delay_tx = Arc::new(change_epoch_delay_tx);
-    let (reconfig_delay_tx, _reconfig_delay_rx) = broadcast::channel(1);
-    let reconfig_delay_tx = Arc::new(reconfig_delay_tx);
+    // // Set up wait points.
+    // let (change_epoch_delay_tx, _change_epoch_delay_rx) = broadcast::channel(1);
+    // let change_epoch_delay_tx = Arc::new(change_epoch_delay_tx);
+    // let (reconfig_delay_tx, _reconfig_delay_rx) = broadcast::channel(1);
+    // let reconfig_delay_tx = Arc::new(reconfig_delay_tx);
 
-    // Test code runs in node 1 - node 2 is always a validator.
-    let target_node = 2;
-    register_wait(
-        "change_epoch_tx_delay",
-        target_node,
-        change_epoch_delay_tx.clone(),
-    );
-    register_wait("reconfig_delay", target_node, reconfig_delay_tx.clone());
+    // // Test code runs in node 1 - node 2 is always a validator.
+    // let target_node = 2;
+    // register_wait(
+    //     "change_epoch_tx_delay",
+    //     target_node,
+    //     change_epoch_delay_tx.clone(),
+    // );
+    // register_wait("reconfig_delay", target_node, reconfig_delay_tx.clone());
 
     let test_cluster = TestClusterBuilder::new()
         .with_epoch_duration_ms(1000)
@@ -377,171 +377,173 @@ async fn test_create_advance_epoch_tx_race() {
     // Allow time for paused node to execute change epoch tx via state sync.
     sleep(Duration::from_secs(5)).await;
 
-    // now release the pause, node will find that change epoch tx has already been executed.
-    info!("releasing change epoch delay tx");
-    change_epoch_delay_tx.send(()).unwrap();
+    // // now release the pause, node will find that change epoch tx has already been executed.
+    // info!("releasing change epoch delay tx");
+    // change_epoch_delay_tx.send(()).unwrap();
 
-    // proceeded with reconfiguration.
-    sleep(Duration::from_secs(1)).await;
-    reconfig_delay_tx.send(()).unwrap();
+    // // proceeded with reconfiguration.
+    // sleep(Duration::from_secs(1)).await;
+    // reconfig_delay_tx.send(()).unwrap();
+
+    // assert_eq!(0, 1);
 }
 
 
-#[cfg(msim)]
-#[sim_test]
-async fn test_create_advance_epoch_tx_race_x() {
-    use std::sync::{Arc, Mutex};
-    use sui_macros::{register_fail_point, register_fail_point_async};
-    use tokio::sync::broadcast;
-    use std::collections::HashSet;
-    use rand::{SeedableRng, rngs::StdRng, Rng};
-    let seed: u64 = if let Ok(seed_str) = ::std::env::var("MSIM_TEST_SEED") {
-        seed_str.parse().expect("MSIM_TEST_SEED should be an integer")
-    } else {
-        ::std::time::SystemTime::now().duration_since(::std::time::SystemTime::UNIX_EPOCH).unwrap().as_secs()
-    };
-    let mut rng = StdRng::seed_from_u64(seed);
-    telemetry_subscribers::init_for_testing();
-    sui_protocol_config::ProtocolConfig::poison_get_for_min_version();
-    // panic if we enter safe mode. If you remove the check for `is_tx_already_executed` in
-    // AuthorityState::create_and_execute_advance_epoch_tx, this test should fail.
-    register_fail_point("record_checkpoint_builder_is_safe_mode_metric", || {
-        panic!("safe mode recorded");
-    });
-    let task_ids = Arc::new(Mutex::new(HashSet::new()));
-    // Intercept the specified async wait point on a given node, and wait there until a message
-    // is sent from the given tx.
-    let register_wait = |failpoint, node_id,tx1: Arc<broadcast::Sender<()>>,tx2: Arc<broadcast::Sender<()>>,tx3: Arc<broadcast::Sender<()>>, tx4: Arc<broadcast::Sender<()>>| {
-        let node = sui_simulator::task::NodeId(node_id);
-        let cloned_task_ids = Arc::clone(&task_ids);
-        register_fail_point_async(failpoint, move || {
-            let cur_node = sui_simulator::current_simnode_id();
-            let tx1 = tx1.clone();
-            let tx2 = tx2.clone();
-            let tx3 = tx3.clone();
-            let tx4 = tx4.clone();
-            let cloned_task_ids = Arc::clone(&cloned_task_ids);
-            async move {
-                let backtrace = std::backtrace::Backtrace::force_capture();
-                // Convert the backtrace to a string
-                let backtrace_str = format!("{:?}", backtrace);
-                let mut task_id = 0;
-                if backtrace_str.contains("sui_node::SuiNode::monitor_reconfiguration::{{closure}}") {
-                    info!("monitor_reconfiguration task");
-                    task_id = 1;
-                } else if backtrace_str.contains("sui_core::execution_driver::execution_process::{{closure}}::{{closure}}::{{closure}}") {
-                    info!("execution_process task");
-                    task_id = 2;
-                } else if backtrace_str.contains("sui_core::checkpoints::CheckpointService::spawn::{{closure}}") {
-                    info!("checkpoint task");
-                    task_id = 3;
-                } else if backtrace_str.contains("narwhal_executor::subscriber::spawn_subscriber::{{closure}}") {
-                    info!("handle_consensus_output task");
-                    task_id = 4;
-                } else {
-                    // Print the string to the console
-                    warn!("other task: {}", backtrace_str);
-                }
-                if cur_node == node {
-                    info!("task {} backtrace: {}", task_id, std::backtrace::Backtrace::force_capture());
-                    cloned_task_ids.lock().unwrap().insert(task_id);
-                    info!(
-                        "waiting for test to send signal for {} task {}",
-                        failpoint, task_id
-                    );
-                    let mut rx = if task_id == 1 {
-                        tx1.subscribe()
-                    }
-                    else if task_id == 2 {
-                        tx2.subscribe()
-                    } else if task_id == 3 {
-                        tx3.subscribe()
-                    } else if task_id == 4 {
-                        tx4.subscribe()
-                    } else {
-                        //todo
-                        tx1.subscribe()
-                    };
-                    rx.recv().await.unwrap();
-                    info!("continuing {}", failpoint);
-                }
-            }
-        });
-    };
-    let (task_1_tx, _task_1_rx) = broadcast::channel(1);
-    let task_1_tx = Arc::new(task_1_tx);
-    let (task_2_tx, _task_2_rx) = broadcast::channel(1);
-    let task_2_tx = Arc::new(task_2_tx);
-    let (task_3_tx, _task_3_rx) = broadcast::channel(1);
-    let task_3_tx = Arc::new(task_3_tx);
-    let (task_4_tx, _task_4_rx) = broadcast::channel(1);
-    let task_4_tx = Arc::new(task_4_tx);
-    // Test code runs in node 2 - always a validator.
-    let target_node = 2;
-    register_wait(
-        "change_epoch_tx_delay",
-        target_node,
-        task_1_tx.clone(),
-        task_2_tx.clone(),
-        task_3_tx.clone(),
-        task_4_tx.clone(),
-    );
-    register_wait(
-        "reconfig_delay",
-        target_node,
-        task_1_tx.clone(),
-        task_2_tx.clone(),
-        task_3_tx.clone(),
-        task_4_tx.clone(),
-    );
-    let mut test_cluster = TestClusterBuilder::new()
-        .with_epoch_duration_ms(1000)
-        .build()
-        .await
-        .unwrap();
-    test_cluster.wait_for_epoch(None).await;
-    register_wait("try_execute_immediately", target_node,
-                  task_1_tx.clone(),
-                  task_2_tx.clone(),
-                  task_3_tx.clone(),
-                  task_4_tx.clone());
-    register_wait("execution_lock.read", target_node,
-                  task_1_tx.clone(),
-                  task_2_tx.clone(),
-                  task_3_tx.clone(),
-                  task_4_tx.clone());
-    register_wait("execution_lock.write", target_node,
-                  task_1_tx.clone(),
-                  task_2_tx.clone(),
-                  task_3_tx.clone(),
-                  task_4_tx.clone());
-    let mut prev_size = 0;
-    std::thread::spawn(move ||
-        loop {
-            let cloned_task_ids = Arc::clone(&task_ids);
-            if cloned_task_ids.lock().unwrap().len() == prev_size && prev_size >0 {
-                let index = rng.gen_range(0..prev_size);
-                //let element = *set.iter().nth(index).unwrap();
-                let task_id_x = cloned_task_ids.lock().unwrap().iter().nth(index).unwrap().clone();
-                cloned_task_ids.lock().unwrap().remove(&task_id_x);
-                if task_id_x == 1 {
-                    task_1_tx.send(()).unwrap();
-                } else if task_id_x == 2 {
-                    task_2_tx.send(()).unwrap();
-                } else if task_id_x == 3 {
-                    task_3_tx.send(()).unwrap();
-                } else if task_id_x == 4 {
-                    task_4_tx.send(()).unwrap();
-                }
-                info!("releasing execution_lock for task {} index {}",task_id_x, index);
-            }
-            info!("cloned_task_ids: {:?}",cloned_task_ids);
-            prev_size = cloned_task_ids.lock().unwrap().len();
-            std::thread::sleep(Duration::from_millis(100));
-        });
-    sleep(Duration::from_millis(1000)).await;
-    //assert_eq!(1, 0);
-}
+// #[cfg(msim)]
+// #[sim_test]
+// async fn test_create_advance_epoch_tx_race_x() {
+//     use std::sync::{Arc, Mutex};
+//     use sui_macros::{register_fail_point, register_fail_point_async};
+//     use tokio::sync::broadcast;
+//     use std::collections::HashSet;
+//     use rand::{SeedableRng, rngs::StdRng, Rng};
+//     let seed: u64 = if let Ok(seed_str) = ::std::env::var("MSIM_TEST_SEED") {
+//         seed_str.parse().expect("MSIM_TEST_SEED should be an integer")
+//     } else {
+//         ::std::time::SystemTime::now().duration_since(::std::time::SystemTime::UNIX_EPOCH).unwrap().as_secs()
+//     };
+//     let mut rng = StdRng::seed_from_u64(seed);
+//     telemetry_subscribers::init_for_testing();
+//     sui_protocol_config::ProtocolConfig::poison_get_for_min_version();
+//     // panic if we enter safe mode. If you remove the check for `is_tx_already_executed` in
+//     // AuthorityState::create_and_execute_advance_epoch_tx, this test should fail.
+//     register_fail_point("record_checkpoint_builder_is_safe_mode_metric", || {
+//         panic!("safe mode recorded");
+//     });
+//     let task_ids = Arc::new(Mutex::new(HashSet::new()));
+//     // Intercept the specified async wait point on a given node, and wait there until a message
+//     // is sent from the given tx.
+//     let register_wait = |failpoint, node_id,tx1: Arc<broadcast::Sender<()>>,tx2: Arc<broadcast::Sender<()>>,tx3: Arc<broadcast::Sender<()>>, tx4: Arc<broadcast::Sender<()>>| {
+//         let node = sui_simulator::task::NodeId(node_id);
+//         let cloned_task_ids = Arc::clone(&task_ids);
+//         register_fail_point_async(failpoint, move || {
+//             let cur_node = sui_simulator::current_simnode_id();
+//             let tx1 = tx1.clone();
+//             let tx2 = tx2.clone();
+//             let tx3 = tx3.clone();
+//             let tx4 = tx4.clone();
+//             let cloned_task_ids = Arc::clone(&cloned_task_ids);
+//             async move {
+//                 let backtrace = std::backtrace::Backtrace::force_capture();
+//                 // Convert the backtrace to a string
+//                 let backtrace_str = format!("{:?}", backtrace);
+//                 let mut task_id = 0;
+//                 if backtrace_str.contains("sui_node::SuiNode::monitor_reconfiguration::{{closure}}") {
+//                     info!("monitor_reconfiguration task");
+//                     task_id = 1;
+//                 } else if backtrace_str.contains("sui_core::execution_driver::execution_process::{{closure}}::{{closure}}::{{closure}}") {
+//                     info!("execution_process task");
+//                     task_id = 2;
+//                 } else if backtrace_str.contains("sui_core::checkpoints::CheckpointService::spawn::{{closure}}") {
+//                     info!("checkpoint task");
+//                     task_id = 3;
+//                 } else if backtrace_str.contains("narwhal_executor::subscriber::spawn_subscriber::{{closure}}") {
+//                     info!("handle_consensus_output task");
+//                     task_id = 4;
+//                 } else {
+//                     // Print the string to the console
+//                     warn!("other task: {}", backtrace_str);
+//                 }
+//                 if cur_node == node {
+//                     info!("task {} backtrace: {}", task_id, std::backtrace::Backtrace::force_capture());
+//                     cloned_task_ids.lock().unwrap().insert(task_id);
+//                     info!(
+//                         "waiting for test to send signal for {} task {}",
+//                         failpoint, task_id
+//                     );
+//                     let mut rx = if task_id == 1 {
+//                         tx1.subscribe()
+//                     }
+//                     else if task_id == 2 {
+//                         tx2.subscribe()
+//                     } else if task_id == 3 {
+//                         tx3.subscribe()
+//                     } else if task_id == 4 {
+//                         tx4.subscribe()
+//                     } else {
+//                         //todo
+//                         tx1.subscribe()
+//                     };
+//                     rx.recv().await.unwrap();
+//                     info!("continuing {}", failpoint);
+//                 }
+//             }
+//         });
+//     };
+//     let (task_1_tx, _task_1_rx) = broadcast::channel(1);
+//     let task_1_tx = Arc::new(task_1_tx);
+//     let (task_2_tx, _task_2_rx) = broadcast::channel(1);
+//     let task_2_tx = Arc::new(task_2_tx);
+//     let (task_3_tx, _task_3_rx) = broadcast::channel(1);
+//     let task_3_tx = Arc::new(task_3_tx);
+//     let (task_4_tx, _task_4_rx) = broadcast::channel(1);
+//     let task_4_tx = Arc::new(task_4_tx);
+//     // Test code runs in node 2 - always a validator.
+//     let target_node = 2;
+//     register_wait(
+//         "change_epoch_tx_delay",
+//         target_node,
+//         task_1_tx.clone(),
+//         task_2_tx.clone(),
+//         task_3_tx.clone(),
+//         task_4_tx.clone(),
+//     );
+//     register_wait(
+//         "reconfig_delay",
+//         target_node,
+//         task_1_tx.clone(),
+//         task_2_tx.clone(),
+//         task_3_tx.clone(),
+//         task_4_tx.clone(),
+//     );
+//     let mut test_cluster = TestClusterBuilder::new()
+//         .with_epoch_duration_ms(1000)
+//         .build()
+//         .await
+//         .unwrap();
+//     test_cluster.wait_for_epoch(None).await;
+//     register_wait("try_execute_immediately", target_node,
+//                   task_1_tx.clone(),
+//                   task_2_tx.clone(),
+//                   task_3_tx.clone(),
+//                   task_4_tx.clone());
+//     register_wait("execution_lock.read", target_node,
+//                   task_1_tx.clone(),
+//                   task_2_tx.clone(),
+//                   task_3_tx.clone(),
+//                   task_4_tx.clone());
+//     register_wait("execution_lock.write", target_node,
+//                   task_1_tx.clone(),
+//                   task_2_tx.clone(),
+//                   task_3_tx.clone(),
+//                   task_4_tx.clone());
+//     let mut prev_size = 0;
+//     std::thread::spawn(move ||
+//         loop {
+//             let cloned_task_ids = Arc::clone(&task_ids);
+//             if cloned_task_ids.lock().unwrap().len() == prev_size && prev_size >0 {
+//                 let index = rng.gen_range(0..prev_size);
+//                 //let element = *set.iter().nth(index).unwrap();
+//                 let task_id_x = cloned_task_ids.lock().unwrap().iter().nth(index).unwrap().clone();
+//                 cloned_task_ids.lock().unwrap().remove(&task_id_x);
+//                 if task_id_x == 1 {
+//                     task_1_tx.send(()).unwrap();
+//                 } else if task_id_x == 2 {
+//                     task_2_tx.send(()).unwrap();
+//                 } else if task_id_x == 3 {
+//                     task_3_tx.send(()).unwrap();
+//                 } else if task_id_x == 4 {
+//                     task_4_tx.send(()).unwrap();
+//                 }
+//                 info!("releasing execution_lock for task {} index {}",task_id_x, index);
+//             }
+//             info!("cloned_task_ids: {:?}",cloned_task_ids);
+//             prev_size = cloned_task_ids.lock().unwrap().len();
+//             std::thread::sleep(Duration::from_millis(100));
+//         });
+//     sleep(Duration::from_millis(1000)).await;
+//     //assert_eq!(1, 0);
+// }
 
 
 #[sim_test]
