@@ -56,7 +56,7 @@ use sui_json_rpc_types::{
     SuiMoveValue, SuiObjectDataFilter, SuiTransactionBlockData, SuiTransactionBlockEffects,
     SuiTransactionBlockEvents, TransactionFilter,
 };
-use sui_macros::{fail_point, fail_point_async, instrumented_yield};
+use sui_macros::{fail_point, fail_point_async, instrumented_yield, instrumented_yield_id};
 use sui_protocol_config::{ProtocolConfig, SupportedProtocolVersions};
 use sui_storage::indexes::{CoinInfo, ObjectIndexChanges};
 use sui_storage::IndexStore;
@@ -3707,8 +3707,9 @@ impl AuthorityState {
             "Creating advance epoch transaction"
         );
 
-        println!("instrumented_yield before change_epoch_tx_delay");
-        instrumented_yield!();
+        // println!("instrumented_yield before change_epoch_tx_delay");
+        // instrumented_yield!();
+        instrumented_yield_id!(11);
         // fail_point_async!("change_epoch_tx_delay");
         
         let _tx_lock = epoch_store.acquire_tx_lock(tx_digest).await;

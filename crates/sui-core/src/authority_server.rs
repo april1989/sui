@@ -36,6 +36,9 @@ use crate::{
     consensus_adapter::{ConsensusAdapter, ConsensusAdapterMetrics},
 };
 
+use sui_macros::{instrumented_yield_id};
+
+
 // Reject a transaction if transaction manager queue length is above this threshold.
 // 100_000 = 10k TPS * 5s resident time in transaction manager (pending + executing) * 2.
 pub(crate) const MAX_TM_QUEUE_LENGTH: usize = 100_000;
@@ -389,6 +392,8 @@ impl ValidatorService {
             state.get_signed_effects_and_maybe_resign(&tx_digest, &epoch_store)?
         {
             let events = if let Some(digest) = signed_effects.events_digest() {
+                // println!("instrumented_yield in handle_certificate");
+                instrumented_yield_id!(4);
                 state.get_transaction_events(digest)?
             } else {
                 TransactionEvents::default()

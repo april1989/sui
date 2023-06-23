@@ -55,6 +55,9 @@ use typed_store::traits::{TableSummary, TypedStoreDebug};
 use typed_store::Map;
 use typed_store_derive::DBMapUtils;
 
+use sui_macros::{instrumented_yield_id};
+
+
 pub type CheckpointCommitHeight = u64;
 
 pub struct EpochStats {
@@ -830,6 +833,9 @@ impl CheckpointBuilder {
                     .await?;
 
                 let committee = system_state_obj.get_current_epoch_committee().committee;
+
+                // println!("instrumented_yield in create_checkpoints-true");
+                instrumented_yield_id!(5);
 
                 // This must happen after the call to augment_epoch_last_checkpoint,
                 // otherwise we will not capture the change_epoch tx

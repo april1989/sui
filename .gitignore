@@ -62,3 +62,7 @@ yarn-error.log*
 # misc
 *.key
 .env
+
+
+log-*
+log*

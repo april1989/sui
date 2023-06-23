@@ -157,6 +157,20 @@ macro_rules! instrumented_yield {
     () => {};
 }
 
+#[cfg(msim)]
+#[macro_export]
+macro_rules! instrumented_yield_id {
+  ($tag: expr) => {
+    sui_simulator::task::instrumented_yield_id($tag).await
+  };
+}
+
+#[cfg(not(msim))]
+#[macro_export]
+macro_rules! instrumented_yield_id {
+  ($tag: expr) => {};
+}
+
 // These tests need to be run in release mode, since debug mode does overflow checks by default!
 #[cfg(test)]
 mod test {

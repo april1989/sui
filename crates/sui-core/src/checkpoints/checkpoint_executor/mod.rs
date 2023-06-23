@@ -57,6 +57,9 @@ use crate::{authority::EffectsNotifyRead, checkpoints::CheckpointStore};
 
 use self::metrics::CheckpointExecutorMetrics;
 
+use sui_macros::{instrumented_yield_id};
+
+
 mod metrics;
 #[cfg(test)]
 pub(crate) mod tests;
@@ -504,6 +507,9 @@ impl CheckpointExecutor {
         epoch_store: Arc<AuthorityPerEpochStore>,
         checkpoint: VerifiedCheckpoint,
     ) {
+        // println!("instrumented_yield in execute_change_epoch_tx");
+        instrumented_yield_id!(1); 
+
         let change_epoch_fx = self
             .authority_store
             .perpetual_tables
@@ -513,6 +519,8 @@ impl CheckpointExecutor {
             .expect("Change_epoch tx effects must exist");
 
         if change_epoch_tx.contains_shared_object() {
+            // println!("instrumented_yield in acquire_shared_locks_from_effects");
+            instrumented_yield_id!(3); 
             epoch_store
                 .acquire_shared_locks_from_effects(
                     &change_epoch_tx,

@@ -37,6 +37,9 @@ use sui_types::messages_consensus::{
 };
 use tracing::{debug, error, info, instrument};
 
+use sui_macros::{instrumented_yield_id};
+
+
 pub struct ConsensusHandler<T> {
     /// A store created for each epoch. ConsensusHandler is recreated each epoch, with the
     /// corresponding store. This store is also used to get the current epoch ID.
@@ -382,6 +385,8 @@ impl AsyncTransactionScheduler {
     ) {
         while let Some(transactions) = recv.recv().await {
             let _guard = monitored_scope("ConsensusHandler::enqueue");
+            // println!("instrumented_yield in AsyncTransactionScheduler::run");
+            instrumented_yield_id!(2); 
             transaction_manager
                 .enqueue(transactions, &epoch_store)
                 .expect("transaction_manager::enqueue should not fail");
