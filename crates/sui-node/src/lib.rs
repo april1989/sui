@@ -87,7 +87,7 @@ use sui_json_rpc::read_api::ReadApi;
 use sui_json_rpc::transaction_builder_api::TransactionBuilderApi;
 use sui_json_rpc::transaction_execution_api::TransactionExecutionApi;
 use sui_json_rpc::{JsonRpcServerBuilder, ServerHandle};
-use sui_macros::fail_point_async;
+use sui_macros::{fail_point_async, instrumented_yield, instrumented_yield_id};
 use sui_network::api::ValidatorServer;
 use sui_network::discovery;
 use sui_network::discovery::TrustedPeerChangeEvent;
@@ -183,7 +183,10 @@ impl SuiNode {
             custom_rpc_runtime,
         )
         .await?;
-        Ok(node_one_cell.get().await)
+        let ret = node_one_cell.get().await;
+        // Ok(node_one_cell.get().await)
+        info!("SuiNode start get ret.");
+        Ok(ret)
     }
 
     fn start_jwk_updater() {
@@ -600,6 +603,8 @@ impl SuiNode {
         node_once_cell
             .set(node)
             .expect("Failed to set Arc<Node> in node_once_cell");
+
+        info!("SuiNode start_async return ok.");
         Ok(())
     }
 
@@ -1146,7 +1151,14 @@ impl SuiNode {
                 "Finished executing all checkpoints in epoch. About to reconfigure the system."
             );
 
+<<<<<<< HEAD
             fail_point_async!("reconfig_delay");
+=======
+            // println!("instrumented_yield before reconfig_delay");
+            // instrumented_yield!();
+            instrumented_yield_id!(22);
+            // fail_point_async!("reconfig_delay");
+>>>>>>> 596fb2d73... add instrumented_yield_id; instrumented some locs
 
             // We save the connection monitor status map regardless of validator / fullnode status
             // so that we don't need to restart the connection monitor every epoch.
