@@ -416,7 +416,7 @@ impl AsyncTransactionScheduler {
     ) {
         while let Some(transactions) = recv.recv().await {
             let _guard = monitored_scope("ConsensusHandler::enqueue");
-            // println!("instrumented_yield in AsyncTransactionScheduler::run");
+            println!("instrumented_yield in AsyncTransactionScheduler::run");
             instrumented_yield_id!(2); 
             transaction_manager
                 .enqueue(transactions, &epoch_store)

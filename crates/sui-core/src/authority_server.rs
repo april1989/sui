@@ -399,7 +399,7 @@ impl ValidatorService {
             state.get_signed_effects_and_maybe_resign(&tx_digest, &epoch_store)?
         {
             let events = if let Some(digest) = signed_effects.events_digest() {
-                // println!("instrumented_yield in handle_certificate");
+                println!("instrumented_yield in handle_certificate");
                 instrumented_yield_id!(4);
                 state.get_transaction_events(digest)?
             } else {
