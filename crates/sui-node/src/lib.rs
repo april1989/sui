@@ -1153,7 +1153,7 @@ impl SuiNode {
 
             // println!("instrumented_yield before reconfig_delay");
             // instrumented_yield!();
-            instrumented_yield_id!(22);
+            // instrumented_yield_id!(22);
             // fail_point_async!("reconfig_delay");
 
             // We save the connection monitor status map regardless of validator / fullnode status
