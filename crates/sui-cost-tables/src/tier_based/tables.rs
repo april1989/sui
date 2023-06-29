@@ -9,6 +9,8 @@ use move_core_types::gas_algebra::{AbstractMemorySize, InternalGas, NumArgs, Num
 use move_core_types::language_storage::ModuleId;
 
 use move_core_types::vm_status::StatusCode;
+#[cfg(debug_assertions)]
+use move_vm_profiler::GasProfiler;
 use move_vm_types::gas::{GasMeter, SimpleInstruction};
 use move_vm_types::loaded_data::runtime_types::Type;
 use move_vm_types::views::{TypeView, ValueView};
@@ -70,6 +72,9 @@ pub struct GasStatus {
     instructions_executed: u64,
     instructions_next_tier_start: Option<u64>,
     instructions_current_tier_mult: u64,
+
+    #[cfg(debug_assertions)]
+    profiler: Option<GasProfiler>,
 }
 
 impl GasStatus {
@@ -111,6 +116,8 @@ impl GasStatus {
             stack_height_next_tier_start,
             stack_size_next_tier_start,
             instructions_next_tier_start,
+            #[cfg(debug_assertions)]
+            profiler: None,
         }
     }
 
@@ -139,6 +146,8 @@ impl GasStatus {
             stack_height_next_tier_start,
             stack_size_next_tier_start,
             instructions_next_tier_start,
+            #[cfg(debug_assertions)]
+            profiler: None,
         }
     }
 
@@ -165,6 +174,8 @@ impl GasStatus {
             stack_height_next_tier_start: None,
             stack_size_next_tier_start: None,
             instructions_next_tier_start: None,
+            #[cfg(debug_assertions)]
+            profiler: None,
         }
     }
 
@@ -726,6 +737,16 @@ impl GasMeter for GasStatus {
         }
         self.gas_left
     }
+
+    #[cfg(debug_assertions)]
+    fn get_profiler_mut(&mut self) -> Option<&mut GasProfiler> {
+        self.profiler.as_mut()
+    }
+
+    #[cfg(debug_assertions)]
+    fn set_profiler(&mut self, profiler: GasProfiler) {
+        self.profiler = Some(profiler);
+    }
 }
 
 pub fn zero_cost_schedule() -> CostTable {
@@ -898,12 +919,42 @@ pub fn initial_cost_schedule_v3() -> CostTable {
     }
 }
 
+pub fn initial_cost_schedule_v4() -> CostTable {
+    let instruction_tiers: BTreeMap<u64, u64> = vec![
+        (0, 1),
+        (20_000, 2),
+        (50_000, 10),
+        (100_000, 50),
+        (200_000, 100),
+    ]
+    .into_iter()
+    .collect();
+
+    let stack_height_tiers: BTreeMap<u64, u64> =
+        vec![(0, 1), (1_000, 2), (10_000, 10)].into_iter().collect();
+
+    let stack_size_tiers: BTreeMap<u64, u64> = vec![
+        (0, 1),
+        (100_000, 2),     // ~100K
+        (500_000, 5),     // ~500K
+        (1_000_000, 100), // ~1M
+    ]
+    .into_iter()
+    .collect();
+
+    CostTable {
+        instruction_tiers,
+        stack_size_tiers,
+        stack_height_tiers,
+    }
+}
+
 // Convert from our representation of gas costs to the type that the MoveVM expects for unit tests.
 // We don't want our gas depending on the MoveVM test utils and we don't want to fix our
 // representation to whatever is there, so instead we perform this translation from our gas units
 // and cost schedule to the one expected by the Move unit tests.
 pub fn initial_cost_schedule_for_unit_tests() -> move_vm_test_utils::gas_schedule::CostTable {
-    let table = initial_cost_schedule_v3();
+    let table = initial_cost_schedule_v4();
     move_vm_test_utils::gas_schedule::CostTable {
         instruction_tiers: table
             .instruction_tiers

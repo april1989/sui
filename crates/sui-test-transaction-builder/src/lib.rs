@@ -4,13 +4,14 @@
 use move_core_types::ident_str;
 use shared_crypto::intent::Intent;
 use std::path::PathBuf;
+use sui_genesis_builder::validator_info::GenesisValidatorMetadata;
 use sui_move_build::BuildConfig;
 use sui_types::base_types::{ObjectID, ObjectRef, SequenceNumber, SuiAddress};
 use sui_types::crypto::{Signature, Signer};
 use sui_types::sui_system_state::SUI_SYSTEM_MODULE_NAME;
 use sui_types::transaction::{
-    CallArg, ObjectArg, Transaction, TransactionData, VerifiedTransaction,
-    TEST_ONLY_GAS_UNIT_FOR_GENERIC, TEST_ONLY_GAS_UNIT_FOR_TRANSFER,
+    CallArg, ObjectArg, ProgrammableTransaction, Transaction, TransactionData, VerifiedTransaction,
+    DEFAULT_VALIDATOR_GAS_PRICE, TEST_ONLY_GAS_UNIT_FOR_GENERIC, TEST_ONLY_GAS_UNIT_FOR_TRANSFER,
 };
 use sui_types::{TypeTag, SUI_SYSTEM_PACKAGE_ID};
 
@@ -108,6 +109,52 @@ impl TestTransactionBuilder {
         )
     }
 
+    pub fn call_request_add_validator(self) -> Self {
+        self.move_call(
+            SUI_SYSTEM_PACKAGE_ID,
+            SUI_SYSTEM_MODULE_NAME.as_str(),
+            "request_add_validator",
+            vec![CallArg::SUI_SYSTEM_MUT],
+        )
+    }
+
+    pub fn call_request_add_validator_candidate(
+        self,
+        validator: &GenesisValidatorMetadata,
+    ) -> Self {
+        self.move_call(
+            SUI_SYSTEM_PACKAGE_ID,
+            SUI_SYSTEM_MODULE_NAME.as_str(),
+            "request_add_validator_candidate",
+            vec![
+                CallArg::SUI_SYSTEM_MUT,
+                CallArg::Pure(bcs::to_bytes(&validator.protocol_public_key).unwrap()),
+                CallArg::Pure(bcs::to_bytes(&validator.network_public_key).unwrap()),
+                CallArg::Pure(bcs::to_bytes(&validator.worker_public_key).unwrap()),
+                CallArg::Pure(bcs::to_bytes(&validator.proof_of_possession).unwrap()),
+                CallArg::Pure(bcs::to_bytes(validator.name.as_bytes()).unwrap()),
+                CallArg::Pure(bcs::to_bytes(validator.description.as_bytes()).unwrap()),
+                CallArg::Pure(bcs::to_bytes(validator.image_url.as_bytes()).unwrap()),
+                CallArg::Pure(bcs::to_bytes(validator.project_url.as_bytes()).unwrap()),
+                CallArg::Pure(bcs::to_bytes(&validator.network_address).unwrap()),
+                CallArg::Pure(bcs::to_bytes(&validator.p2p_address).unwrap()),
+                CallArg::Pure(bcs::to_bytes(&validator.primary_address).unwrap()),
+                CallArg::Pure(bcs::to_bytes(&validator.worker_address).unwrap()),
+                CallArg::Pure(bcs::to_bytes(&DEFAULT_VALIDATOR_GAS_PRICE).unwrap()), // gas_price
+                CallArg::Pure(bcs::to_bytes(&0u64).unwrap()), // commission_rate
+            ],
+        )
+    }
+
+    pub fn call_request_remove_validator(self) -> Self {
+        self.move_call(
+            SUI_SYSTEM_PACKAGE_ID,
+            SUI_SYSTEM_MODULE_NAME.as_str(),
+            "request_remove_validator",
+            vec![CallArg::SUI_SYSTEM_MUT],
+        )
+    }
+
     pub fn with_type_args(mut self, type_args: Vec<TypeTag>) -> Self {
         if let TestTransactionData::Move(data) = &mut self.test_data {
             assert!(data.type_args.is_empty());
@@ -147,9 +194,21 @@ impl TestTransactionBuilder {
     }
 
     pub fn publish_examples(self, subpath: &'static str) -> Self {
-        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.extend(["..", "..", "sui_programmability", "examples", subpath]);
+        let path = if let Ok(p) = std::env::var("MOVE_EXAMPLES_DIR") {
+            let mut path = PathBuf::from(p);
+            path.extend([subpath]);
+            path
+        } else {
+            let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            path.extend(["..", "..", "sui_programmability", "examples", subpath]);
+            path
+        };
         self.publish(path)
+    }
+
+    pub fn programmable(mut self, programmable: ProgrammableTransaction) -> Self {
+        self.test_data = TestTransactionData::Programmable(programmable);
+        self
     }
 
     pub fn build(self) -> TransactionData {
@@ -197,6 +256,13 @@ impl TestTransactionBuilder {
                     self.gas_price,
                 )
             }
+            TestTransactionData::Programmable(pt) => TransactionData::new_programmable(
+                self.sender,
+                vec![self.gas_object],
+                pt,
+                self.gas_price * TEST_ONLY_GAS_UNIT_FOR_GENERIC,
+                self.gas_price,
+            ),
             TestTransactionData::Empty => {
                 panic!("Cannot build empty transaction");
             }
@@ -217,6 +283,7 @@ enum TestTransactionData {
     Transfer(TransferData),
     TransferSui(TransferSuiData),
     Publish(PublishData),
+    Programmable(ProgrammableTransaction),
     Empty,
 }
 

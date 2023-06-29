@@ -24,7 +24,7 @@ use prettytable::{row, table};
 use prometheus::Registry;
 use serde::Serialize;
 use serde_json::{json, Value};
-use sui_adapter::adapter::{default_verifier_config, run_metered_move_bytecode_verifier_impl};
+use sui_adapter::adapter::{default_verifier_config, run_metered_move_bytecode_verifier};
 use sui_move::build::resolve_lock_file_path;
 use sui_protocol_config::ProtocolConfig;
 use sui_source_validation::{BytecodeSourceVerifier, SourceMode};
@@ -84,7 +84,7 @@ macro_rules! serialize_or_execute {
                 SuiClientCommandResult::SerializedSignedTransaction(sender_signed_data)
             } else {
                 let transaction = Transaction::new(sender_signed_data).verify()?;
-                let response = $context.execute_transaction_block(transaction).await?;
+                let response = $context.execute_transaction_may_fail(transaction).await?;
                 let effects = response.effects.as_ref().ok_or_else(|| {
                     anyhow!("Effects from SuiTransactionBlockResult should not be empty")
                 })?;
@@ -199,9 +199,13 @@ pub enum SuiClientCommands {
         /// (SenderSignedData) using base64 encoding, and print out the string.
         #[clap(long, required = false)]
         serialize_signed_transaction: bool,
+
+        /// If `true`, enable linters
+        #[clap(long, global = true)]
+        lint: bool,
     },
 
-    /// Run the bytecode verifer on the package
+    /// Run the bytecode verifier on the package
     #[clap(name = "verify-bytecode-meter")]
     VerifyBytecodeMeter {
         /// Path to directory containing a Move package
@@ -269,6 +273,10 @@ pub enum SuiClientCommands {
         /// (SenderSignedData) using base64 encoding, and print out the string.
         #[clap(long, required = false)]
         serialize_signed_transaction: bool,
+
+        /// If `true`, enable linters
+        #[clap(long, global = true)]
+        lint: bool,
     },
 
     /// Verify local Move packages against on-chain packages, and optionally their dependencies.
@@ -636,6 +644,7 @@ impl SuiClientCommands {
                 legacy_digest,
                 serialize_unsigned_transaction,
                 serialize_signed_transaction,
+                lint,
             } => {
                 let sender = context.try_get_object_owner(&gas).await?;
                 let sender = sender.unwrap_or(context.active_address()?);
@@ -648,6 +657,7 @@ impl SuiClientCommands {
                         package_path,
                         with_unpublished_dependencies,
                         skip_dependency_verification,
+                        lint,
                     )
                     .await?;
 
@@ -721,6 +731,7 @@ impl SuiClientCommands {
                 with_unpublished_dependencies,
                 serialize_unsigned_transaction,
                 serialize_signed_transaction,
+                lint,
             } => {
                 let sender = context.try_get_object_owner(&gas).await?;
                 let sender = sender.unwrap_or(context.active_address()?);
@@ -732,6 +743,7 @@ impl SuiClientCommands {
                     package_path,
                     with_unpublished_dependencies,
                     skip_dependency_verification,
+                    lint,
                 )
                 .await?;
 
@@ -775,7 +787,7 @@ impl SuiClientCommands {
                 metered_verifier_config.max_per_mod_meter_units = None;
                 let mut meter = SuiVerifierMeter::new(&metered_verifier_config);
                 println!("Running bytecode verifier for {} modules", modules.len());
-                run_metered_move_bytecode_verifier_impl(
+                run_metered_move_bytecode_verifier(
                     &modules,
                     &protocol_config,
                     &metered_verifier_config,
@@ -1190,7 +1202,7 @@ impl SuiClientCommands {
                     Transaction::from_generic_sig_data(data, Intent::sui_transaction(), sigs)
                         .verify()?;
 
-                let response = context.execute_transaction_block(verified).await?;
+                let response = context.execute_transaction_may_fail(verified).await?;
                 SuiClientCommandResult::ExecuteSignedTx(response)
             }
             SuiClientCommands::NewEnv { alias, rpc, ws } => {
@@ -1233,6 +1245,7 @@ impl SuiClientCommands {
                     config: build_config,
                     run_bytecode_verifier: true,
                     print_diags_to_stderr: true,
+                    lint: false,
                 }
                 .build(package_path)?;
 
@@ -1272,12 +1285,14 @@ fn compile_package_simple(
         config: resolve_lock_file_path(build_config, Some(package_path.clone()))?,
         run_bytecode_verifier: false,
         print_diags_to_stderr: false,
+        lint: false,
     };
     let resolution_graph = config.resolution_graph(&package_path)?;
 
     Ok(build_from_resolution_graph(
         package_path,
         resolution_graph,
+        false,
         false,
         false,
     )?)
@@ -1289,6 +1304,7 @@ async fn compile_package(
     package_path: PathBuf,
     with_unpublished_dependencies: bool,
     skip_dependency_verification: bool,
+    lint: bool,
 ) -> Result<
     (
         PackageDependencies,
@@ -1305,6 +1321,7 @@ async fn compile_package(
         config,
         run_bytecode_verifier,
         print_diags_to_stderr,
+        lint,
     };
     let resolution_graph = config.resolution_graph(&package_path)?;
     let (package_id, dependencies) = gather_published_ids(&resolution_graph);
@@ -1317,6 +1334,7 @@ async fn compile_package(
         resolution_graph,
         run_bytecode_verifier,
         print_diags_to_stderr,
+        lint,
     )?;
     if !compiled_package.is_system_package() {
         if let Some(already_published) = compiled_package.published_root_module() {

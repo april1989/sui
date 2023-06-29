@@ -7,7 +7,6 @@ use crate::validator_commands::{
 use anyhow::Ok;
 use fastcrypto::encoding::{Base64, Encoding};
 use shared_crypto::intent::{Intent, IntentMessage};
-use sui_json_rpc_types::SuiTransactionBlockResponse;
 use sui_types::crypto::SuiKeyPair;
 use sui_types::transaction::TransactionData;
 use sui_types::{
@@ -15,11 +14,11 @@ use sui_types::{
     crypto::Signature,
     transaction::{Transaction, VerifiedTransaction},
 };
-use test_utils::network::TestClusterBuilder;
+use test_cluster::TestClusterBuilder;
 
 #[tokio::test]
 async fn test_print_raw_rgp_txn() -> Result<(), anyhow::Error> {
-    let test_cluster = TestClusterBuilder::new().build().await?;
+    let test_cluster = TestClusterBuilder::new().build().await;
     let keypair: &SuiKeyPair = test_cluster
         .swarm
         .config()
@@ -61,8 +60,7 @@ async fn test_print_raw_rgp_txn() -> Result<(), anyhow::Error> {
         Intent::sui_transaction(),
         vec![signature],
     ));
-    let res: SuiTransactionBlockResponse = context.execute_transaction_block(signed_txn).await?;
-    assert!(res.status_ok().unwrap());
+    context.execute_transaction_must_succeed(signed_txn).await;
     let (_, summary) = get_validator_summary(&sui_client, validator_address)
         .await?
         .unwrap();

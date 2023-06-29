@@ -173,6 +173,14 @@ module sui::kiosk {
 
     // === Kiosk packing and unpacking ===
 
+    /// Creates a new Kiosk in a default configuration: sender receives the
+    /// `KioskOwnerCap` and becomes the Owner, the `Kiosk` is shared.
+    entry fun default(ctx: &mut TxContext) {
+        let (kiosk, cap) = new(ctx);
+        sui::transfer::transfer(cap, sender(ctx));
+        sui::transfer::share_object(kiosk);
+    }
+
     /// Creates a new `Kiosk` with a matching `KioskOwnerCap`.
     public fun new(ctx: &mut TxContext): (Kiosk, KioskOwnerCap) {
         let kiosk = Kiosk {
@@ -233,8 +241,6 @@ module sui::kiosk {
 
     /// Place any object into a Kiosk.
     /// Performs an authorization check to make sure only owner can do that.
-    /// Makes sure a `TransferPolicy` exists for `T`, otherwise assets can be
-    /// locked in the `Kiosk` forever.
     public fun place<T: key + store>(
         self: &mut Kiosk, cap: &KioskOwnerCap, item: T
     ) {
@@ -248,7 +254,7 @@ module sui::kiosk {
     /// `list_with_purchase_cap`.
     ///
     /// Requires policy for `T` to make sure that there's an issued `TransferPolicy`
-    /// and the item can be sold.
+    /// and the item can be sold, otherwise the asset might be locked forever.
     public fun lock<T: key + store>(
         self: &mut Kiosk, cap: &KioskOwnerCap, _policy: &TransferPolicy<T>, item: T
     ) {

@@ -1,5 +1,53 @@
 # @mysten/wallet-kit
 
+## 0.4.10
+
+### Patch Changes
+
+- Updated dependencies [3ea9adb71a]
+- Updated dependencies [1cfb1c9da3]
+- Updated dependencies [1cfb1c9da3]
+- Updated dependencies [fb3bb9118a]
+  - @mysten/sui.js@0.36.0
+  - @mysten/wallet-adapter-base@0.7.10
+  - @mysten/wallet-adapter-unsafe-burner@0.8.10
+  - @mysten/wallet-adapter-wallet-standard@0.7.10
+  - @mysten/wallet-kit-core@0.4.10
+  - @mysten/wallet-standard@0.5.10
+
+## 0.4.9
+
+### Patch Changes
+
+- Updated dependencies [09d77325a9]
+  - @mysten/sui.js@0.35.1
+  - @mysten/wallet-adapter-base@0.7.9
+  - @mysten/wallet-adapter-unsafe-burner@0.8.9
+  - @mysten/wallet-adapter-wallet-standard@0.7.9
+  - @mysten/wallet-kit-core@0.4.9
+  - @mysten/wallet-standard@0.5.9
+
+## 0.4.8
+
+### Patch Changes
+
+- 519d1a9d8d: fix key prop warning for accounts list dropdown
+- Updated dependencies [4ea96d909a]
+- Updated dependencies [bcbb178c44]
+- Updated dependencies [470c27af50]
+- Updated dependencies [83c7328d9b]
+- Updated dependencies [03828224c9]
+- Updated dependencies [671faefe3c]
+- Updated dependencies [9ce7e051b4]
+- Updated dependencies [9ce7e051b4]
+- Updated dependencies [bb50698551]
+  - @mysten/sui.js@0.35.0
+  - @mysten/wallet-kit-core@0.4.8
+  - @mysten/wallet-adapter-base@0.7.8
+  - @mysten/wallet-adapter-unsafe-burner@0.8.8
+  - @mysten/wallet-adapter-wallet-standard@0.7.8
+  - @mysten/wallet-standard@0.5.8
+
 ## 0.4.7
 
 ### Patch Changes

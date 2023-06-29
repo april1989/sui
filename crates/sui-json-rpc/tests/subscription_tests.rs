@@ -11,13 +11,13 @@ use sui_core::test_utils::wait_for_tx;
 use sui_json_rpc_types::{
     SuiTransactionBlockEffects, SuiTransactionBlockEffectsAPI, TransactionFilter,
 };
-use test_utils::network::TestClusterBuilder;
+use test_cluster::TestClusterBuilder;
 
 #[tokio::test]
 async fn test_subscribe_transaction() -> Result<(), anyhow::Error> {
-    let cluster = TestClusterBuilder::new().build().await.unwrap();
+    let cluster = TestClusterBuilder::new().build().await;
 
-    let address = &cluster.accounts[0];
+    let address = &cluster.get_address_0();
     let wallet = cluster.wallet;
 
     let ws_client = cluster.fullnode_handle.ws_client;
@@ -34,7 +34,7 @@ async fn test_subscribe_transaction() -> Result<(), anyhow::Error> {
         .unwrap();
 
     let (_, _, digest) = wallet.create_devnet_nft(package_id).await;
-    wait_for_tx(digest, cluster.fullnode_handle.sui_node.state().clone()).await;
+    wait_for_tx(digest, cluster.fullnode_handle.sui_node.state()).await;
 
     // Wait for streaming
     let effects = match timeout(Duration::from_secs(5), sub.next()).await {

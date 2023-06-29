@@ -80,6 +80,9 @@ pub async fn send_and_confirm_transaction_with_execution_error(
 
     if with_shared {
         send_consensus(authority, &certificate).await;
+        if let Some(fullnode) = fullnode {
+            send_consensus(fullnode, &certificate).await;
+        }
     }
 
     // Submit the confirmation. *Now* execution actually happens, and it should fail when we try to look up our dummy module.
@@ -88,9 +91,13 @@ pub async fn send_and_confirm_transaction_with_execution_error(
     // We also check the incremental effects of the transaction on the live object set against StateAccumulator
     // for testing and regression detection
     let state_acc = StateAccumulator::new(authority.database.clone());
-    let mut state = state_acc.accumulate_live_object_set();
+    let include_wrapped_tombstone = !authority
+        .epoch_store_for_testing()
+        .protocol_config()
+        .simplified_unwrap_then_delete();
+    let mut state = state_acc.accumulate_live_object_set(include_wrapped_tombstone);
     let (result, execution_error_opt) = authority.try_execute_for_test(&certificate).await?;
-    let state_after = state_acc.accumulate_live_object_set();
+    let state_after = state_acc.accumulate_live_object_set(include_wrapped_tombstone);
     let effects_acc = state_acc.accumulate_effects(
         vec![result.inner().data().clone()],
         epoch_store.protocol_config(),
@@ -278,7 +285,7 @@ pub async fn send_consensus(authority: &AuthorityState, cert: &VerifiedCertifica
     {
         let certs = authority
             .epoch_store_for_testing()
-            .process_consensus_transactions(
+            .process_consensus_transactions_for_tests(
                 vec![transaction],
                 &Arc::new(CheckpointServiceNoop {}),
                 authority.db(),
@@ -308,7 +315,7 @@ pub async fn send_consensus_no_execution(authority: &AuthorityState, cert: &Veri
         // This allows testing cert execution independently.
         authority
             .epoch_store_for_testing()
-            .process_consensus_transactions(
+            .process_consensus_transactions_for_tests(
                 vec![transaction],
                 &Arc::new(CheckpointServiceNoop {}),
                 &authority.db(),

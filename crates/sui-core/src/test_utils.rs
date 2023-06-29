@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use sui_config::genesis::Genesis;
+use sui_config::local_ip_utils;
 use sui_framework::BuiltInFramework;
 use sui_genesis_builder::validator_info::ValidatorInfo;
 use sui_move_build::{BuildConfig, CompiledPackage, SuiPackageHooks};
@@ -76,9 +77,13 @@ pub async fn send_and_confirm_transaction(
     // We also check the incremental effects of the transaction on the live object set against StateAccumulator
     // for testing and regression detection
     let state_acc = StateAccumulator::new(authority.database.clone());
-    let mut state = state_acc.accumulate_live_object_set();
+    let include_wrapped_tombstone = !authority
+        .epoch_store_for_testing()
+        .protocol_config()
+        .simplified_unwrap_then_delete();
+    let mut state = state_acc.accumulate_live_object_set(include_wrapped_tombstone);
     let (result, _execution_error_opt) = authority.try_execute_for_test(&certificate).await?;
-    let state_after = state_acc.accumulate_live_object_set();
+    let state_after = state_acc.accumulate_live_object_set(include_wrapped_tombstone);
     let effects_acc = state_acc.accumulate_effects(
         vec![result.inner().data().clone()],
         epoch_store.protocol_config(),
@@ -233,10 +238,10 @@ async fn init_genesis(
             network_key: network_key_pair.public().clone(),
             gas_price: 1,
             commission_rate: 0,
-            network_address: sui_config::utils::new_tcp_network_address(),
-            p2p_address: sui_config::utils::new_udp_network_address(),
-            narwhal_primary_address: sui_config::utils::new_udp_network_address(),
-            narwhal_worker_address: sui_config::utils::new_udp_network_address(),
+            network_address: local_ip_utils::new_local_tcp_address_for_testing(),
+            p2p_address: local_ip_utils::new_local_udp_address_for_testing(),
+            narwhal_primary_address: local_ip_utils::new_local_udp_address_for_testing(),
+            narwhal_worker_address: local_ip_utils::new_local_udp_address_for_testing(),
             description: String::new(),
             image_url: String::new(),
             project_url: String::new(),

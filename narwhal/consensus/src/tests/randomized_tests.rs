@@ -22,6 +22,7 @@ use std::num::NonZeroUsize;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 use storage::ConsensusStore;
+use test_utils::latest_protocol_version;
 use test_utils::mock_certificate_with_rand;
 use test_utils::CommitteeFixture;
 #[allow(unused_imports)]
@@ -415,6 +416,7 @@ pub fn make_certificates_with_parameters(
             // Now create the certificate with the provided parents
             let (_, certificate) = mock_certificate_with_rand(
                 committee,
+                &latest_protocol_version(),
                 authority.id(),
                 round,
                 parents_digests.clone(),
@@ -498,6 +500,7 @@ fn generate_and_run_execution_plans(
         let mut bullshark = Bullshark::new(
             committee.clone(),
             store.clone(),
+            latest_protocol_version(),
             metrics.clone(),
             NUM_SUB_DAGS_PER_SCHEDULE,
         );
