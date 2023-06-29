@@ -848,7 +848,7 @@ impl CheckpointBuilder {
 
                 let committee = system_state_obj.get_current_epoch_committee().committee;
 
-                println!("instrumented_yield in create_checkpoints-true");
+                // println!("instrumented_yield in create_checkpoints-true");
                 instrumented_yield_id!(5);
 
                 // This must happen after the call to augment_epoch_last_checkpoint,

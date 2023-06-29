@@ -3940,8 +3940,8 @@ impl AuthorityState {
 
         // println!("instrumented_yield before change_epoch_tx_delay");
         // instrumented_yield!();
-        instrumented_yield_id!(11);
-        // fail_point_async!("change_epoch_tx_delay");
+        // instrumented_yield_id!(11);
+        fail_point_async!("change_epoch_tx_delay");
         
         let _tx_lock = epoch_store.acquire_tx_lock(tx_digest).await;
 
