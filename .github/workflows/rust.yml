@@ -2,7 +2,6 @@ name: Rust Our Simtest
 
 on:
   push:
-  pull_request:
     branches:
       - main
 
@@ -47,8 +46,6 @@ jobs:
         id: diff
         
   simtest:
-    needs: diff
-    if: needs.diff.outputs.isRust == 'true'
     timeout-minutes: 45
     runs-on: [ubuntu-ghcloud]
     env:
