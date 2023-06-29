@@ -34,27 +34,6 @@ env:
   RUST_BACKTRACE: short
 
 jobs:
-  simtest:
-    timeout-minutes: 45
-    runs-on: [ubuntu-ghcloud]
-    env:
-      MSIM_WATCHDOG_TIMEOUT_MS: 60000
-    steps:
-      - uses: actions/checkout@v3
-      - uses: taiki-e/install-action@nextest
-      - name: git clone my msim
-      - uses: actions/checkout@v3
-        with:
-          repository: april1989/mysten-sim
-          token: ${{ secrets.PAT }}
-      - name: Set Swap Space
-        uses: pierotofy/set-swap-space@master
-        with:
-          swap-size-gb: 256
-      - name: cargo simtest
-        run: |
-          MSIM_TEST_SCHEDULE=1-2,3-4,2-2,2-4,5-2,4-5 LOCAL_MSIM_PATH=/home/runner/work/april1989/mysten-sim scripts/simtest/cargo-simtest simtest --no-fail-fast --test-threads=1 
-
   diff:
     runs-on: [ubuntu-latest]
     outputs:
@@ -205,3 +184,24 @@ jobs:
           alert-threshold: '200%'
           comment-on-alert: true
           fail-on-alert: true
+
+  simtest:
+    timeout-minutes: 45
+    runs-on: [ubuntu-ghcloud]
+    env:
+      MSIM_WATCHDOG_TIMEOUT_MS: 60000
+    steps:
+      - uses: actions/checkout@v3
+      - uses: taiki-e/install-action@nextest
+      - name: git clone my msim
+      - uses: actions/checkout@v3
+        with:
+          repository: april1989/mysten-sim
+          token: ${{ secrets.PAT }}
+      - name: Set Swap Space
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 256
+      - name: cargo simtest
+        run: |
+          MSIM_TEST_SCHEDULE=1-2,3-4,2-2,2-4,5-2,4-5 LOCAL_MSIM_PATH=/home/runner/work/april1989/mysten-sim scripts/simtest/cargo-simtest simtest --no-fail-fast --test-threads=1 
