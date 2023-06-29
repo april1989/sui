@@ -1151,14 +1151,10 @@ impl SuiNode {
                 "Finished executing all checkpoints in epoch. About to reconfigure the system."
             );
 
-<<<<<<< HEAD
-            fail_point_async!("reconfig_delay");
-=======
             // println!("instrumented_yield before reconfig_delay");
             // instrumented_yield!();
             instrumented_yield_id!(22);
             // fail_point_async!("reconfig_delay");
->>>>>>> 596fb2d73... add instrumented_yield_id; instrumented some locs
 
             // We save the connection monitor status map regardless of validator / fullnode status
             // so that we don't need to restart the connection monitor every epoch.
