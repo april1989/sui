@@ -266,19 +266,24 @@ impl ConsensusTransactionOrdering {
 /// - Initialize the field to `None` in prior protocol versions.
 /// - Initialize the field to `Some(val)` for your new protocol version.
 /// - Add a public getter that simply unwraps the field.
-/// - A public getter of the form `field(&self) -> field_type` will be automatically generated for you.
+/// - Two public getters of the form `field(&self) -> field_type`
+///     and `field_as_option(&self) -> Option<field_type>` will be automatically generated for you.
 /// Example for a field: `new_constant: Option<u64>`
 /// ```rust,ignore
 ///      pub fn new_constant(&self) -> u64 {
 ///         self.new_constant.expect(Self::CONSTANT_ERR_MSG)
 ///     }
+///      pub fn new_constant_as_option(&self) -> Option<u64> {
+///         self.new_constant.expect(Self::CONSTANT_ERR_MSG)
+///     }
 /// ```
-/// This way, if the constant is accessed in a protocol version in which it is not defined, the
-/// validator will crash. (Crashing is necessary because this type of error would almost always
-/// result in forking if not prevented here).
-///
+/// With `pub fn new_constant(&self) -> u64`, if the constant is accessed in a protocol version
+/// in which it is not defined, the validator will crash. (Crashing is necessary because
+/// this type of error would almost always result in forking if not prevented here).
+/// If you don't want the validator to crash, you can use the
+/// `pub fn new_constant_as_option(&self) -> Option<u64>` getter, which will
+/// return `None` if the field is not defined at that version.
 /// - If you want a customized getter, you can add a method in the impl.
-///     For example see `max_size_written_objects_as_option`
 #[skip_serializing_none]
 #[derive(Clone, Serialize, Debug, ProtocolConfigGetters)]
 pub struct ProtocolConfig {
@@ -1264,6 +1269,15 @@ impl ProtocolConfig {
             17 => {
                 let mut cfg = Self::get_for_version_impl(version - 1, chain);
                 cfg.execution_version = Some(1);
+
+                // Following flags are implied by this execution version.  Once support for earlier
+                // protocol versions is dropped, these flags can be removed:
+                // cfg.feature_flags.package_upgrades = true;
+                // cfg.feature_flags.disallow_adding_abilities_on_upgrade = true;
+                // cfg.feature_flags.disallow_change_struct_type_params_on_upgrade = true;
+                // cfg.feature_flags.loaded_child_objects_fixed = true;
+                // cfg.feature_flags.ban_entry_init = true;
+                // cfg.feature_flags.pack_digest_hash_modules = true;
                 cfg
             }
             // Use this template when making changes:

@@ -9,14 +9,15 @@ use std::{
 
 use move_binary_format::{
     access::ModuleAccess,
+    compatibility::{Compatibility, InclusionCheck},
     errors::{Location, PartialVMResult, VMResult},
     file_format::{AbilitySet, CodeOffset, FunctionDefinitionIndex, LocalIndex, Visibility},
-    CompiledModule,
+    normalized, CompiledModule,
 };
 use move_core_types::{
     account_address::AccountAddress,
     identifier::IdentStr,
-    language_storage::{ModuleId, StructTag, TypeTag},
+    language_storage::{ModuleId, TypeTag},
     u256::U256,
 };
 use move_vm_runtime::{
@@ -43,12 +44,12 @@ use sui_types::{
     id::{RESOLVED_SUI_ID, UID},
     metrics::LimitsMetrics,
     move_package::{
-        normalize_deserialized_modules, MovePackage, TypeOrigin, UpgradeCap, UpgradePolicy,
-        UpgradeReceipt, UpgradeTicket,
+        normalize_deserialized_modules, MovePackage, UpgradeCap, UpgradePolicy, UpgradeReceipt,
+        UpgradeTicket,
     },
     storage::get_packages,
     transaction::{Argument, Command, ProgrammableMoveCall, ProgrammableTransaction},
-    Identifier, SUI_FRAMEWORK_ADDRESS,
+    SUI_FRAMEWORK_ADDRESS,
 };
 use sui_types::{
     execution_mode::ExecutionMode,
@@ -497,33 +498,18 @@ fn execute_move_publish<Mode: ExecutionMode>(
 
     // For newly published packages, runtime ID matches storage ID.
     let storage_id = runtime_id;
+    let dependencies = fetch_packages(context, &dep_ids)?;
+    let package_obj = context.new_package(&modules, &dependencies)?;
 
-    // Preserve the old order of operations when package upgrades are not supported, because it
-    // affects the order in which error cases are checked.
-    let package_obj = if context.protocol_config.package_upgrades_supported() {
-        let dependencies = fetch_packages(context, &dep_ids)?;
-        let package_obj = context.new_package(&modules, &dependencies)?;
-
-        let Some(package) = package_obj.data.try_as_package() else {
-            invariant_violation!("Newly created package object is not a package");
-        };
-
-        context.set_linkage(package)?;
-        let res = publish_and_verify_modules(context, runtime_id, &modules)
-            .and_then(|_| init_modules::<Mode>(context, argument_updates, &modules));
-        context.reset_linkage();
-        res?;
-
-        package_obj
-    } else {
-        // FOR THE LOVE OF ALL THAT IS GOOD DO NOT RE-ORDER THIS.  It looks redundant, but is
-        // required to maintain backwards compatibility.
-        publish_and_verify_modules(context, runtime_id, &modules)?;
-        let dependencies = fetch_packages(context, &dep_ids)?;
-        let package = context.new_package(&modules, &dependencies)?;
-        init_modules::<Mode>(context, argument_updates, &modules)?;
-        package
+    let Some(package) = package_obj.data.try_as_package() else {
+        invariant_violation!("Newly created package object is not a package");
     };
+
+    context.set_linkage(package)?;
+    let res = publish_and_verify_modules(context, runtime_id, &modules)
+        .and_then(|_| init_modules::<Mode>(context, argument_updates, &modules));
+    context.reset_linkage();
+    res?;
 
     context.write_package(package_obj)?;
     let values = if Mode::packages_are_predefined() {
@@ -552,12 +538,6 @@ fn execute_move_upgrade<Mode: ExecutionMode>(
     upgrade_ticket_arg: Argument,
 ) -> Result<Vec<Value>, ExecutionError>
 {
-    // Check that package upgrades are supported.
-    context
-        .protocol_config
-        .check_package_upgrades_supported()
-        .map_err(|_| ExecutionError::from_kind(ExecutionErrorKind::FeatureNotYetSupported))?;
-
     assert_invariant!(
         !module_bytes.is_empty(),
         "empty package is checked in transaction input checker"
@@ -597,10 +577,11 @@ fn execute_move_upgrade<Mode: ExecutionMode>(
     }
 
     // Check digest.
+    let hash_modules = true;
     let computed_digest = MovePackage::compute_digest_for_modules_and_deps(
         &module_bytes,
         &dep_ids,
-        context.protocol_config.package_digest_hash_module(),
+        hash_modules,
     )
     .to_vec();
     if computed_digest != upgrade_ticket.digest {
@@ -630,38 +611,6 @@ fn execute_move_upgrade<Mode: ExecutionMode>(
     let Some(package) = package_obj.data.try_as_package() else {
         invariant_violation!("Newly created package object is not a package");
     };
-
-    // Populate loader with all previous types.
-    if !context
-        .protocol_config
-        .disallow_adding_abilities_on_upgrade()
-    {
-        for TypeOrigin {
-            module_name,
-            struct_name,
-            package: origin,
-        } in package.type_origin_table()
-        {
-            if package.id() == *origin {
-                continue;
-            }
-
-            let Ok(module) = Identifier::new(module_name.as_str()) else {
-                continue;
-            };
-
-            let Ok(name) = Identifier::new(struct_name.as_str()) else {
-                continue;
-            };
-
-            let _ = context.load_type(&TypeTag::Struct(Box::new(StructTag {
-                address: (*origin).into(),
-                module,
-                name,
-                type_params: vec![],
-            })));
-        }
-    }
 
     context.set_linkage(package)?;
     let res = publish_and_verify_modules(context, runtime_id, &modules);
@@ -707,29 +656,52 @@ fn check_compatibility<'a>(
 
     let mut new_normalized = normalize_deserialized_modules(upgrading_modules.into_iter());
     for (name, cur_module) in current_normalized {
-        let msg = format!("Existing module {name} not found in next version of package");
         let Some(new_module) = new_normalized.remove(&name) else {
             return Err(ExecutionError::new_with_source(
                 ExecutionErrorKind::PackageUpgradeError {
                     upgrade_error: PackageUpgradeError::IncompatibleUpgrade,
                 },
-                msg,
+                format!("Existing module {name} not found in next version of package"),
             ));
         };
 
-        if let Err(e) =
-            policy.check_compatibility(&cur_module, &new_module, context.protocol_config)
-        {
-            return Err(ExecutionError::new_with_source(
-                ExecutionErrorKind::PackageUpgradeError {
-                    upgrade_error: PackageUpgradeError::IncompatibleUpgrade,
-                },
-                e,
-            ));
-        }
+        check_module_compatibility(
+            &policy,
+            &cur_module,
+            &new_module,
+        )?;
     }
 
     Ok(())
+}
+
+fn check_module_compatibility(
+    policy: &UpgradePolicy,
+    cur_module: &normalized::Module,
+    new_module: &normalized::Module,
+) -> Result<(), ExecutionError> {
+    match policy {
+        UpgradePolicy::Additive => InclusionCheck::Subset.check(cur_module, new_module),
+        UpgradePolicy::DepOnly => InclusionCheck::Equal.check(cur_module, new_module),
+        UpgradePolicy::Compatible => {
+            let compatibility = Compatibility {
+                check_struct_and_pub_function_linking: true,
+                check_struct_layout: true,
+                check_friend_linking: false,
+                check_private_entry_linking: false,
+                disallowed_new_abilities: AbilitySet::ALL,
+                disallow_change_struct_type_params: true,
+            };
+
+            compatibility.check(cur_module, new_module)
+        }
+    }
+    .map_err(|e| ExecutionError::new_with_source(
+        ExecutionErrorKind::PackageUpgradeError {
+            upgrade_error: PackageUpgradeError::IncompatibleUpgrade,
+        },
+        e,
+    ))
 }
 
 fn fetch_package(
@@ -889,7 +861,6 @@ fn publish_and_verify_modules(
         // Run Sui bytecode verifier, which runs some additional checks that assume the Move
         // bytecode verifier has passed.
         sui_verifier::verifier::sui_verify_module_unmetered(
-            context.protocol_config,
             module,
             &BTreeMap::new(),
         )?;
