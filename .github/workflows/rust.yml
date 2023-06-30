@@ -45,7 +45,7 @@ jobs:
         uses: "./.github/actions/diffs"
         id: diff
         
-  simtest:
+  our-simtest:
     timeout-minutes: 45
     runs-on: [ubuntu-ghcloud]
     env:
@@ -66,3 +66,23 @@ jobs:
         run: |
           MSIM_TEST_SCHEDULE=1-2,3-4,2-2,2-4,5-2,4-5 LOCAL_MSIM_PATH=/home/runner/work/april1989/mysten-sim scripts/simtest/cargo-simtest simtest --no-fail-fast --test-threads=1 
 
+  default-simtest:
+    needs: diff
+    if: needs.diff.outputs.isRust == 'true'
+    timeout-minutes: 45
+    runs-on: [ubuntu-ghcloud]
+    env:
+      MSIM_WATCHDOG_TIMEOUT_MS: 60000
+    steps:
+      - uses: actions/checkout@v3
+      - uses: taiki-e/install-action@nextest
+      - name: Set Swap Space
+        uses: pierotofy/set-swap-space@master
+        with:
+          swap-size-gb: 256
+      - name: cargo simtest
+        run: |
+          scripts/simtest/cargo-simtest simtest
+      - name: check new tests for flakiness
+        run: |
+          scripts/simtest/stress-new-tests.sh
