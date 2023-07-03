@@ -47,7 +47,8 @@ jobs:
         
   our-simtest:
     timeout-minutes: 45
-    runs-on: [ubuntu-ghcloud]
+    # runs-on: [ubuntu-ghcloud]
+    runs-on: [ubuntu-latest]
     env:
       MSIM_WATCHDOG_TIMEOUT_MS: 60000
     steps:
@@ -70,7 +71,8 @@ jobs:
     needs: diff
     if: needs.diff.outputs.isRust == 'true'
     timeout-minutes: 45
-    runs-on: [ubuntu-ghcloud]
+    # runs-on: [ubuntu-ghcloud]
+    runs-on: [ubuntu-latest]
     env:
       MSIM_WATCHDOG_TIMEOUT_MS: 60000
     steps:
