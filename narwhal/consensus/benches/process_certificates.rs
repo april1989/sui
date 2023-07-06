@@ -11,7 +11,7 @@ use pprof::criterion::{Output, PProfProfiler};
 use prometheus::Registry;
 use std::{collections::BTreeSet, sync::Arc};
 use storage::NodeStorage;
-use test_utils::{make_optimal_certificates, temp_dir, CommitteeFixture};
+use test_utils::{latest_protocol_version, make_optimal_certificates, temp_dir, CommitteeFixture};
 use tokio::time::Instant;
 use types::{Certificate, Round};
 
@@ -34,8 +34,13 @@ pub fn process_certificates(c: &mut Criterion) {
             .iter()
             .map(|x| x.digest())
             .collect::<BTreeSet<_>>();
-        let (certificates, _next_parents) =
-            make_optimal_certificates(&committee, 1..=rounds, &genesis, &keys);
+        let (certificates, _next_parents) = make_optimal_certificates(
+            &committee,
+            &latest_protocol_version(),
+            1..=rounds,
+            &genesis,
+            &keys,
+        );
 
         let store_path = temp_dir();
         let store = NodeStorage::reopen(&store_path, None);
@@ -52,9 +57,9 @@ pub fn process_certificates(c: &mut Criterion) {
         let mut ordering_engine = Bullshark {
             committee: committee.clone(),
             store: store.consensus_store,
+            protocol_config: latest_protocol_version(),
             metrics,
             last_successful_leader_election_timestamp: Instant::now(),
-            last_leader_election: Default::default(),
             max_inserted_certificate_round: 0,
             num_sub_dags_per_schedule: 100,
         };

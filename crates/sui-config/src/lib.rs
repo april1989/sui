@@ -11,11 +11,11 @@ use tracing::trace;
 
 pub mod certificate_deny_config;
 pub mod genesis;
+pub mod local_ip_utils;
 pub mod node;
 pub mod node_config_metrics;
 pub mod p2p;
 pub mod transaction_deny_config;
-pub mod utils;
 
 pub use node::{ConsensusConfig, NodeConfig};
 
@@ -51,6 +51,10 @@ pub fn sui_config_dir() -> Result<PathBuf, anyhow::Error> {
 
 pub fn validator_config_file(i: usize) -> String {
     format!("validator-config-{}.yaml", i)
+}
+
+pub fn ssfn_config_file(i: usize) -> String {
+    format!("ssfn-config-{}.yaml", i)
 }
 
 pub trait Config

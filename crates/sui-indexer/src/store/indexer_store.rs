@@ -27,7 +27,7 @@ use crate::models::events::Event;
 use crate::models::objects::{DeletedObject, Object, ObjectStatus};
 use crate::models::packages::Package;
 use crate::models::system_state::{DBSystemStateSummary, DBValidatorSummary};
-use crate::models::transaction_index::{InputObject, MoveCall, Recipient};
+use crate::models::transaction_index::{ChangedObject, InputObject, MoveCall, Recipient};
 use crate::models::transactions::Transaction;
 use crate::types::CheckpointTransactionBlockResponse;
 
@@ -36,8 +36,12 @@ pub trait IndexerStore {
     type ModuleCache;
 
     async fn get_latest_checkpoint_sequence_number(&self) -> Result<i64, IndexerError>;
-    async fn get_latest_object_checkpoint_sequence_number(&self) -> Result<i64, IndexerError>;
     async fn get_checkpoint(&self, id: CheckpointId) -> Result<RpcCheckpoint, IndexerError>;
+    async fn get_checkpoints(
+        &self,
+        cursor: Option<CheckpointId>,
+        limit: usize,
+    ) -> Result<Vec<RpcCheckpoint>, IndexerError>;
     async fn get_checkpoint_sequence_number(
         &self,
         digest: CheckpointDigest,
@@ -120,15 +124,7 @@ pub trait IndexerStore {
         is_descending: bool,
     ) -> Result<Vec<Transaction>, IndexerError>;
 
-    async fn get_transaction_page_by_mutated_object(
-        &self,
-        object_id: String,
-        start_sequence: Option<i64>,
-        limit: usize,
-        is_descending: bool,
-    ) -> Result<Vec<Transaction>, IndexerError>;
-
-    async fn get_transaction_page_by_sender_recipient_address(
+    async fn get_transaction_page_by_recipient_address(
         &self,
         sender_address: Option<SuiAddress>,
         recipient_address: SuiAddress,
@@ -137,7 +133,25 @@ pub trait IndexerStore {
         is_descending: bool,
     ) -> Result<Vec<Transaction>, IndexerError>;
 
+    // `address` can be either sender or recipient address of the transaction
+    async fn get_transaction_page_by_address(
+        &self,
+        address: SuiAddress,
+        start_sequence: Option<i64>,
+        limit: usize,
+        is_descending: bool,
+    ) -> Result<Vec<Transaction>, IndexerError>;
+
     async fn get_transaction_page_by_input_object(
+        &self,
+        object_id: ObjectID,
+        version: Option<i64>,
+        start_sequence: Option<i64>,
+        limit: usize,
+        is_descending: bool,
+    ) -> Result<Vec<Transaction>, IndexerError>;
+
+    async fn get_transaction_page_by_changed_object(
         &self,
         object_id: ObjectID,
         version: Option<i64>,
@@ -174,6 +188,12 @@ pub trait IndexerStore {
         is_descending: bool,
     ) -> Result<Option<i64>, IndexerError>;
 
+    async fn get_changed_object_sequence_by_digest(
+        &self,
+        tx_digest: Option<String>,
+        is_descending: bool,
+    ) -> Result<Option<i64>, IndexerError>;
+
     async fn get_recipient_sequence_by_digest(
         &self,
         tx_digest: Option<String>,
@@ -188,12 +208,6 @@ pub trait IndexerStore {
         tx: Transaction,
         tx_object_changes: TransactionObjectChanges,
     ) -> Result<usize, IndexerError>;
-    // TODO(gegaowp): keep this method in this trait for now for easier reverting,
-    // will remove it if it's no longer needed.
-    fn persist_all_checkpoint_data(
-        &self,
-        data: &TemporaryCheckpointStore,
-    ) -> Result<usize, IndexerError>;
     async fn persist_checkpoint_transactions(
         &self,
         checkpoint: &Checkpoint,
@@ -201,7 +215,6 @@ pub trait IndexerStore {
     ) -> Result<usize, IndexerError>;
     async fn persist_object_changes(
         &self,
-        checkpoint: &Checkpoint,
         tx_object_changes: &[TransactionObjectChanges],
         object_mutation_latency: Histogram,
         object_deletion_latency: Histogram,
@@ -217,11 +230,16 @@ pub trait IndexerStore {
     async fn persist_transaction_index_tables(
         &self,
         input_objects: &[InputObject],
+        changed_objects: &[ChangedObject],
         move_calls: &[MoveCall],
         recipients: &[Recipient],
     ) -> Result<(), IndexerError>;
 
     async fn persist_epoch(&self, data: &TemporaryEpochStore) -> Result<(), IndexerError>;
+    async fn get_network_total_transactions_previous_epoch(
+        &self,
+        epoch: i64,
+    ) -> Result<i64, IndexerError>;
 
     async fn get_epochs(
         &self,
@@ -245,6 +263,10 @@ pub trait IndexerStore {
         &self,
         checkpoint: i64,
     ) -> Result<AddressStats, IndexerError>;
+    async fn get_all_epoch_address_stats(
+        &self,
+        descending_order: Option<bool>,
+    ) -> Result<Vec<AddressStats>, IndexerError>;
 }
 
 #[derive(Clone, Debug)]
@@ -295,10 +317,9 @@ pub struct TemporaryCheckpointStore {
     pub transactions: Vec<Transaction>,
     pub events: Vec<Event>,
     pub object_changes: Vec<TransactionObjectChanges>,
-    pub addresses: Vec<Address>,
-    pub active_addresses: Vec<ActiveAddress>,
     pub packages: Vec<Package>,
     pub input_objects: Vec<InputObject>,
+    pub changed_objects: Vec<ChangedObject>,
     pub move_calls: Vec<MoveCall>,
     pub recipients: Vec<Recipient>,
 }

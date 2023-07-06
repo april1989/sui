@@ -20,8 +20,12 @@ use arc_swap::ArcSwap;
 use futures::TryFutureExt;
 use mysten_common::sync::async_once_cell::AsyncOnceCell;
 use prometheus::Registry;
+use reqwest::Client;
+use sui_core::authority::CHAIN_IDENTIFIER;
 use sui_core::consensus_adapter::LazyNarwhalClient;
 use sui_json_rpc::api::JsonRpcMetrics;
+use sui_types::digests::ChainIdentifier;
+use sui_types::message_envelope::get_google_jwk_bytes;
 use sui_types::sui_system_state::SuiSystemState;
 use tap::tap::TapFallible;
 use tokio::runtime::Handle;
@@ -39,6 +43,8 @@ use mysten_metrics::{spawn_monitored_task, RegistryService};
 use mysten_network::server::ServerBuilder;
 use narwhal_network::metrics::MetricsMakeCallbackHandler;
 use narwhal_network::metrics::{NetworkConnectionMetrics, NetworkMetrics};
+use sui_archival::reader::ArchiveReaderBalancer;
+use sui_archival::writer::ArchiveWriter;
 use sui_config::node::DBCheckpointConfig;
 use sui_config::node_config_metrics::NodeConfigMetrics;
 use sui_config::{ConsensusConfig, NodeConfig};
@@ -87,8 +93,9 @@ use sui_network::discovery;
 use sui_network::discovery::TrustedPeerChangeEvent;
 use sui_network::state_sync;
 use sui_protocol_config::{ProtocolConfig, SupportedProtocolVersions};
-use sui_storage::IndexStore;
-use sui_types::base_types::{AuthorityName, EpochId, TransactionDigest};
+use sui_storage::object_store::{ObjectStoreConfig, ObjectStoreType};
+use sui_storage::{FileCompression, IndexStore, StorageFormat};
+use sui_types::base_types::{AuthorityName, EpochId};
 use sui_types::committee::Committee;
 use sui_types::crypto::KeypairTraits;
 use sui_types::error::{SuiError, SuiResult};
@@ -119,6 +126,13 @@ pub struct ValidatorComponents {
     sui_tx_validator_metrics: Arc<SuiTxValidatorMetrics>,
 }
 
+#[cfg(msim)]
+struct SimState {
+    sim_node: sui_simulator::runtime::NodeHandle,
+    sim_safe_mode_expected: AtomicBool,
+    _leak_detector: sui_simulator::NodeLeakDetector,
+}
+
 pub struct SuiNode {
     config: NodeConfig,
     validator_components: Mutex<Option<ValidatorComponents>>,
@@ -142,10 +156,9 @@ pub struct SuiNode {
     _db_checkpoint_handle: Option<oneshot::Sender<()>>,
 
     #[cfg(msim)]
-    sim_node: sui_simulator::runtime::NodeHandle,
+    sim_state: SimState,
 
-    #[cfg(msim)]
-    sim_safe_mode_expected: AtomicBool,
+    _state_archive_handle: Option<broadcast::Sender<()>>,
 }
 
 impl fmt::Debug for SuiNode {
@@ -176,6 +189,46 @@ impl SuiNode {
         Ok(ret)
     }
 
+    fn start_jwk_updater() {
+        info!("Starting JWK updater thread for authority");
+        tokio::task::spawn(async move {
+            loop {
+                // Update the JWK value in the authority server
+                let res = Self::update_google_jwk().await;
+                if let Err(e) = res {
+                    warn!("Error when fetching JWK {:?}", e);
+                }
+                // Sleep for 1 hour
+                tokio::time::sleep(Duration::from_secs(3600)).await;
+            }
+        });
+    }
+
+    async fn update_google_jwk() -> Result<(), SuiError> {
+        if cfg!(msim) {
+            return Ok(());
+        }
+
+        let client = Client::new();
+        let response = client
+            .get("https://www.googleapis.com/oauth2/v2/certs")
+            .send()
+            .await
+            .map_err(|_| SuiError::JWKRetrievalError)?;
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|_| SuiError::JWKRetrievalError)?;
+        let jwk = get_google_jwk_bytes();
+        if let Ok(mut jwk) = jwk.write() {
+            if jwk.to_vec() != bytes.to_vec() {
+                *jwk = bytes.to_vec();
+                info!("New JWK value updated");
+            }
+        }
+        Ok(())
+    }
+
     pub async fn start_async(
         config: &NodeConfig,
         registry_service: RegistryService,
@@ -183,7 +236,6 @@ impl SuiNode {
         custom_rpc_runtime: Option<Handle>,
     ) -> Result<()> {
         NodeConfigMetrics::new(&registry_service.default_registry()).record_metrics(config);
-
         let mut config = config.clone();
         if config.supported_protocol_versions.is_none() {
             info!(
@@ -256,7 +308,12 @@ impl SuiNode {
             cache_metrics,
             signature_verifier_metrics,
             &config.expensive_safety_check_config,
+            ChainIdentifier::from(*genesis.checkpoint().digest()),
         );
+
+        if epoch_store.protocol_config().zklogin_auth() {
+            Self::start_jwk_updater();
+        }
 
         // the database is empty at genesis time
         if is_genesis {
@@ -265,7 +322,7 @@ impl SuiNode {
             // an epoch and the SUI conservation check will fail. This also initialize
             // the expected_network_sui_amount table.
             store
-                .expensive_check_sui_conservation(epoch_store.move_vm())
+                .expensive_check_sui_conservation(&epoch_store)
                 .expect("SUI conservation check cannot fail at genesis");
         }
 
@@ -305,14 +362,21 @@ impl SuiNode {
             None
         };
 
+        let chain_identifier = ChainIdentifier::from(*genesis.checkpoint().digest());
+        // It's ok if the value is already set due to data races.
+        let _ = CHAIN_IDENTIFIER.set(chain_identifier);
+
         // Create network
         // TODO only configure validators as seed/preferred peers for validators and not for
         // fullnodes once we've had a chance to re-work fullnode configuration generation.
+        let archive_readers = ArchiveReaderBalancer::new(config.archive_reader_config())?;
         let (trusted_peer_change_tx, trusted_peer_change_rx) = watch::channel(Default::default());
         let (p2p_network, discovery_handle, state_sync_handle) = Self::create_p2p_network(
             &config,
-            state_sync_store,
+            state_sync_store.clone(),
+            chain_identifier,
             trusted_peer_change_rx,
+            archive_readers.clone(),
             &prometheus_registry,
         )?;
         // We must explicitly send this instead of relying on the initial value to trigger
@@ -323,7 +387,28 @@ impl SuiNode {
             epoch_store.epoch_start_state(),
         )
         .expect("Initial trusted peers must be set");
-
+        let state_archive_handle = if let Some(remote_store_config) =
+            &config.state_archive_write_config.object_store_config
+        {
+            let local_store_config = ObjectStoreConfig {
+                object_store: Some(ObjectStoreType::File),
+                directory: Some(config.archive_path()),
+                ..Default::default()
+            };
+            let archive_writer = ArchiveWriter::new(
+                local_store_config,
+                remote_store_config.clone(),
+                FileCompression::Zstd,
+                StorageFormat::Blob,
+                Duration::from_secs(600),
+                1024 * 1024 * 1024,
+                &prometheus_registry,
+            )
+            .await?;
+            Some(archive_writer.start(state_sync_store).await?)
+        } else {
+            None
+        };
         let db_checkpoint_config = if config.db_checkpoint_config.checkpoint_path.is_none() {
             DBCheckpointConfig {
                 checkpoint_path: Some(config.db_checkpoint_path()),
@@ -373,6 +458,7 @@ impl SuiNode {
             config.certificate_deny_config.clone(),
             config.indirect_objects_threshold,
             config.state_debug_dump_config.clone(),
+            archive_readers,
         )
         .await;
         // ensure genesis txn was executed
@@ -391,6 +477,16 @@ impl SuiNode {
                 .instrument(span)
                 .await
                 .unwrap();
+        }
+
+        if config
+            .expensive_safety_check_config
+            .enable_secondary_index_checks()
+        {
+            if let Some(indexes) = state.indexes.clone() {
+                sui_core::verify_indexes::verify_indexes(state.database.clone(), indexes)
+                    .expect("secondary indexes are inconsistent");
+            }
         }
 
         let (end_of_epoch_channel, end_of_epoch_receiver) =
@@ -488,10 +584,15 @@ impl SuiNode {
             trusted_peer_change_tx,
 
             _db_checkpoint_handle: db_checkpoint_handle,
+
             #[cfg(msim)]
-            sim_node: sui_simulator::runtime::NodeHandle::current(),
-            #[cfg(msim)]
-            sim_safe_mode_expected: AtomicBool::new(false),
+            sim_state: SimState {
+                sim_node: sui_simulator::runtime::NodeHandle::current(),
+                sim_safe_mode_expected: AtomicBool::new(false),
+                _leak_detector: sui_simulator::NodeLeakDetector::new(),
+            },
+
+            _state_archive_handle: state_archive_handle,
         };
 
         info!("SuiNode started!");
@@ -514,7 +615,8 @@ impl SuiNode {
     #[cfg(msim)]
     pub fn set_safe_mode_expected(&self, new_value: bool) {
         info!("Setting safe mode expected to {}", new_value);
-        self.sim_safe_mode_expected
+        self.sim_state
+            .sim_safe_mode_expected
             .store(new_value, Ordering::Relaxed);
     }
 
@@ -560,24 +662,18 @@ impl SuiNode {
         self.close_epoch(&epoch_store).await
     }
 
-    pub fn is_transaction_executed_in_checkpoint(
-        &self,
-        digest: &TransactionDigest,
-    ) -> SuiResult<bool> {
-        self.state
-            .database
-            .is_transaction_executed_in_checkpoint(digest)
-    }
-
     fn create_p2p_network(
         config: &NodeConfig,
         state_sync_store: RocksDbStore,
+        chain_identifier: ChainIdentifier,
         trusted_peer_change_rx: watch::Receiver<TrustedPeerChangeEvent>,
+        archive_readers: ArchiveReaderBalancer,
         prometheus_registry: &Registry,
     ) -> Result<(Network, discovery::Handle, state_sync::Handle)> {
         let (state_sync, state_sync_server) = state_sync::Builder::new()
             .config(config.p2p_config.state_sync.clone().unwrap_or_default())
             .store(state_sync_store)
+            .archive_readers(archive_readers)
             .with_metrics(prometheus_registry)
             .build();
 
@@ -624,13 +720,30 @@ impl SuiNode {
             // staking events in the epoch change txn.
             anemo_config.max_frame_size = Some(2 << 30);
 
+            // Set a higher default value for socket send/receive buffers if not already
+            // configured.
+            let mut quic_config = anemo_config.quic.unwrap_or_default();
+            if quic_config.socket_send_buffer_size.is_none() {
+                quic_config.socket_send_buffer_size = Some(20 << 20);
+            }
+            if quic_config.socket_receive_buffer_size.is_none() {
+                quic_config.socket_receive_buffer_size = Some(20 << 20);
+            }
+            quic_config.allow_failed_socket_buffer_size_setting = true;
+            anemo_config.quic = Some(quic_config);
+
+            let server_name = format!("sui-{}", chain_identifier);
             let network = Network::bind(config.p2p_config.listen_address)
-                .server_name("sui")
+                .server_name(&server_name)
                 .private_key(config.network_key_pair().copy().private().0.to_bytes())
                 .config(anemo_config)
                 .outbound_request_layer(outbound_layer)
                 .start(service)?;
-            info!("P2p network started on {}", network.local_addr());
+            info!(
+                server_name = server_name,
+                "P2p network started on {}",
+                network.local_addr()
+            );
 
             network
         };
@@ -760,6 +873,7 @@ impl SuiNode {
         narwhal_manager
             .start(
                 new_epoch_start_state.get_narwhal_committee(),
+                epoch_store.protocol_config().clone(),
                 worker_cache,
                 consensus_handler,
                 SuiTxValidator::new(
@@ -936,6 +1050,13 @@ impl SuiNode {
         self.transaction_orchestrator.clone()
     }
 
+    pub fn get_google_jwk_bytes(&self) -> Result<Vec<u8>, SuiError> {
+        Ok(get_google_jwk_bytes()
+            .read()
+            .map_err(|_| SuiError::JWKRetrievalError)?
+            .to_vec())
+    }
+
     pub fn subscribe_to_transaction_orchestrator_effects(
         &self,
     ) -> Result<tokio::sync::broadcast::Receiver<QuorumDriverEffectsQueueResult>> {
@@ -995,7 +1116,11 @@ impl SuiNode {
                 .expect("Read Sui System State object cannot fail");
 
             #[cfg(msim)]
-            if !self.sim_safe_mode_expected.load(Ordering::Relaxed) {
+            if !self
+                .sim_state
+                .sim_safe_mode_expected
+                .load(Ordering::Relaxed)
+            {
                 debug_assert!(!latest_system_state.safe_mode());
             }
 
@@ -1136,6 +1261,22 @@ impl SuiNode {
                 }
             };
             *self.validator_components.lock().await = new_validator_components;
+
+            #[cfg(msim)]
+            if !matches!(
+                self.config
+                    .authority_store_pruning_config
+                    .num_epochs_to_retain_for_checkpoints(),
+                None | Some(u64::MAX) | Some(0)
+            ) {
+                self.state
+                .prune_checkpoints_for_eligible_epochs(
+                    self.config.clone(),
+                    sui_core::authority::authority_store_pruner::AuthorityStorePruningMetrics::new_for_test(),
+                )
+                .await?;
+            }
+
             info!("Reconfiguration finished");
         }
     }
@@ -1177,6 +1318,15 @@ impl SuiNode {
             new_epoch_store.epoch_start_config().flags(),
         );
         new_epoch_store
+    }
+
+    #[cfg(msim)]
+    pub fn get_sim_node_id(&self) -> sui_simulator::task::NodeId {
+        self.sim_state.sim_node.id()
+    }
+
+    pub fn get_config(&self) -> &NodeConfig {
+        &self.config
     }
 }
 

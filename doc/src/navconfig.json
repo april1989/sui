@@ -185,6 +185,10 @@
 				"fileName": "build/sui-object-display"
 			},
 			{
+				"label": "Sui Kiosk",
+				"fileName": "build/sui-kiosk"
+			},
+			{
 				"label": "Create Smart Contracts with Move",
 				"fileName": "build/move/index",
 				"title": "Smart Contracts with Move",
@@ -300,6 +304,10 @@
 						"fileName": "build/event_api"
 					}
 				]
+			},
+			{
+				"label": "RPC Best Practices",
+				"fileName": "build/rpc-best-practices"
 			},
 			{
 				"label": "Developer Cheat Sheet",

@@ -1,7 +1,11 @@
 # IDE
 **/.history/
 **/.vscode/
+<<<<<<< HEAD
 .idea
+=======
+**/.idea/
+>>>>>>> 9188d532f72cea63b3aeffcd42aca02259d2ef45
 
 # OSX
 .DS_Store

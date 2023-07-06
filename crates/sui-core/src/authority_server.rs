@@ -306,6 +306,22 @@ impl ValidatorService {
         let transaction = request.into_inner();
         let epoch_store = state.load_epoch_store_one_call_per_task();
 
+        if !epoch_store.protocol_config().zklogin_auth() && transaction.has_zklogin_sig() {
+            return Err(SuiError::UnsupportedFeatureError {
+                error: "zklogin is not enabled on this network".to_string(),
+            }
+            .into());
+        }
+
+        if !epoch_store.protocol_config().supports_upgraded_multisig()
+            && transaction.has_upgraded_multisig()
+        {
+            return Err(SuiError::UnsupportedFeatureError {
+                error: "upgraded multisig format not enabled on this network".to_string(),
+            }
+            .into());
+        }
+
         // Enforce overall transaction size limit.
         let tx_size = bcs::serialized_size(&transaction).map_err(|e| {
             SuiError::TransactionSerializationError {
@@ -399,12 +415,10 @@ impl ValidatorService {
                 TransactionEvents::default()
             };
 
-            let fastpath_input_objects = state.load_fastpath_input_objects(&signed_effects)?;
-
             return Ok(Some(HandleCertificateResponseV2 {
                 signed_effects: signed_effects.into_inner(),
                 events,
-                fastpath_input_objects,
+                fastpath_input_objects: vec![], // fastpath is unused for now
             }));
         }
 
@@ -481,7 +495,6 @@ impl ValidatorService {
         let effects = state
             .execute_certificate(&certificate, &epoch_store)
             .await?;
-        let fastpath_input_objects = state.load_fastpath_input_objects(&effects)?;
         let events = if let Some(event_digest) = effects.events_digest() {
             state.get_transaction_events(event_digest)?
         } else {
@@ -490,7 +503,7 @@ impl ValidatorService {
         Ok(Some(HandleCertificateResponseV2 {
             signed_effects: effects.into_inner(),
             events,
-            fastpath_input_objects,
+            fastpath_input_objects: vec![], // fastpath is unused for now
         }))
     }
 }

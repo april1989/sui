@@ -13,9 +13,7 @@ use jsonrpsee::{RpcModule, SubscriptionSink};
 
 use move_core_types::identifier::Identifier;
 use sui_core::event_handler::SubscriptionHandler;
-use sui_json_rpc::api::{
-    validate_limit, IndexerApiClient, IndexerApiServer, QUERY_MAX_RESULT_LIMIT,
-};
+use sui_json_rpc::api::{cap_page_limit, IndexerApiClient, IndexerApiServer};
 use sui_json_rpc::indexer_api::spawn_subscription;
 use sui_json_rpc::SuiRpcModule;
 use sui_json_rpc_types::{
@@ -73,7 +71,7 @@ impl<S: IndexerStore> IndexerApi<S> {
         limit: Option<usize>,
         descending_order: Option<bool>,
     ) -> Result<TransactionBlocksPage, IndexerError> {
-        let limit = validate_limit(limit, *QUERY_MAX_RESULT_LIMIT)?;
+        let limit = cap_page_limit(limit);
         let is_descending = descending_order.unwrap_or_default();
         let cursor_str = cursor.map(|digest| digest.to_string());
         let mut tx_vec_from_db = match query.filter {
@@ -157,8 +155,9 @@ impl<S: IndexerStore> IndexerApi<S> {
                     .get_transaction_sequence_by_digest(cursor_str, is_descending)
                     .await?;
                 self.state
-                    .get_transaction_page_by_mutated_object(
-                        mutated_obj_id.to_string(),
+                    .get_transaction_page_by_changed_object(
+                        mutated_obj_id,
+                        None,
                         indexer_seq_number,
                         limit + 1,
                         is_descending,
@@ -186,7 +185,7 @@ impl<S: IndexerStore> IndexerApi<S> {
                     .get_recipient_sequence_by_digest(cursor_str, is_descending)
                     .await?;
                 self.state
-                    .get_transaction_page_by_sender_recipient_address(
+                    .get_transaction_page_by_recipient_address(
                         /* from */ None,
                         recipient_address,
                         recipient_seq_number,
@@ -201,13 +200,22 @@ impl<S: IndexerStore> IndexerApi<S> {
                     .get_recipient_sequence_by_digest(cursor_str, is_descending)
                     .await?;
                 self.state
-                    .get_transaction_page_by_sender_recipient_address(
+                    .get_transaction_page_by_recipient_address(
                         Some(from),
                         to,
                         recipient_seq_number,
                         limit + 1,
                         is_descending,
                     )
+                    .await
+            }
+            Some(TransactionFilter::FromOrToAddress { addr }) => {
+                let start_sequence = self
+                    .state
+                    .get_recipient_sequence_by_digest(cursor_str, is_descending)
+                    .await?;
+                self.state
+                    .get_transaction_page_by_address(addr, start_sequence, limit + 1, is_descending)
                     .await
             }
             Some(TransactionFilter::TransactionKind(tx_kind_name)) => {
@@ -283,7 +291,7 @@ impl<S: IndexerStore> IndexerApi<S> {
             None => Ok((address, None)),
         }?;
         let options = options.unwrap_or_default();
-        let limit = validate_limit(limit, *QUERY_MAX_RESULT_LIMIT)?;
+        let limit = cap_page_limit(limit);
 
         // NOTE: fetch one more object to check if there is next page
         let mut objects = self
@@ -449,19 +457,19 @@ where
         Ok(())
     }
 
-    async fn resolve_name_service_address(&self, _name: String) -> RpcResult<Option<SuiAddress>> {
-        // TODO(gegaowp): implement name service resolver in indexer
-        todo!()
+    async fn resolve_name_service_address(&self, name: String) -> RpcResult<Option<SuiAddress>> {
+        self.fullnode.resolve_name_service_address(name).await
     }
 
     async fn resolve_name_service_names(
         &self,
-        _address: SuiAddress,
-        _cursor: Option<ObjectID>,
-        _limit: Option<usize>,
+        address: SuiAddress,
+        cursor: Option<ObjectID>,
+        limit: Option<usize>,
     ) -> RpcResult<Page<String, ObjectID>> {
-        // TODO(gegaowp): implement name service resolver in indexer
-        todo!()
+        self.fullnode
+            .resolve_name_service_names(address, cursor, limit)
+            .await
     }
 }
 

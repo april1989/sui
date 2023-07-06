@@ -303,7 +303,21 @@ impl WalletContext {
         ))
     }
 
-    pub async fn execute_transaction_block(
+    /// Execute a transaction and wait for it to be locally executed on the fullnode.
+    /// Also expects the effects status to be ExecutionStatus::Success.
+    pub async fn execute_transaction_must_succeed(
+        &self,
+        tx: VerifiedTransaction,
+    ) -> SuiTransactionBlockResponse {
+        let response = self.execute_transaction_may_fail(tx).await.unwrap();
+        assert!(response.status_ok().unwrap());
+        response
+    }
+
+    /// Execute a transaction and wait for it to be locally executed on the fullnode.
+    /// The transaction execution is not guaranteed to succeed and may fail. This is usually only
+    /// needed in non-test environment or the caller is explicitly testing some failure behavior.
+    pub async fn execute_transaction_may_fail(
         &self,
         tx: VerifiedTransaction,
     ) -> anyhow::Result<SuiTransactionBlockResponse> {
@@ -412,6 +426,18 @@ impl WalletContext {
         )
     }
 
+    pub async fn publish_package(&self, path: PathBuf) -> ObjectRef {
+        let (sender, gas_object) = self.get_one_gas_object().await.unwrap().unwrap();
+        let gas_price = self.get_reference_gas_price().await.unwrap();
+        let txn = self.sign_transaction(
+            &TestTransactionBuilder::new(sender, gas_object, gas_price)
+                .publish(path)
+                .build(),
+        );
+        let resp = self.execute_transaction_must_succeed(txn).await;
+        get_new_package_obj_from_response(&resp).unwrap()
+    }
+
     /// Executes a transaction to publish the `basics` package and returns the package object ref.
     pub async fn publish_basics_package(&self) -> ObjectRef {
         let (sender, gas_object) = self.get_one_gas_object().await.unwrap().unwrap();
@@ -421,7 +447,7 @@ impl WalletContext {
                 .publish_examples("basics")
                 .build(),
         );
-        let resp = self.execute_transaction_block(txn).await.unwrap();
+        let resp = self.execute_transaction_must_succeed(txn).await;
         get_new_package_obj_from_response(&resp).unwrap()
     }
 
@@ -437,9 +463,8 @@ impl WalletContext {
                 .build(),
         );
         let resp = self
-            .execute_transaction_block(counter_creation_txn)
-            .await
-            .unwrap();
+            .execute_transaction_must_succeed(counter_creation_txn)
+            .await;
         let counter_ref = resp
             .effects
             .unwrap()
@@ -476,7 +501,7 @@ impl WalletContext {
                 .call_counter_increment(package_id, counter_id, initial_shared_version)
                 .build(),
         );
-        self.execute_transaction_block(txn).await.unwrap()
+        self.execute_transaction_must_succeed(txn).await
     }
 
     /// Executes a transaction to publish the `nfts` package and returns the package id, id of the gas object used, and the digest of the transaction.
@@ -489,7 +514,7 @@ impl WalletContext {
                 .publish_examples("nfts")
                 .build(),
         );
-        let resp = self.execute_transaction_block(txn).await.unwrap();
+        let resp = self.execute_transaction_must_succeed(txn).await;
         let package_id = get_new_package_obj_from_response(&resp).unwrap().0;
         (package_id, gas_id, resp.digest)
     }
@@ -508,7 +533,7 @@ impl WalletContext {
                 .call_nft_create(package_id)
                 .build(),
         );
-        let resp = self.execute_transaction_block(txn).await.unwrap();
+        let resp = self.execute_transaction_must_succeed(txn).await;
 
         let object_id = resp
             .effects
@@ -541,6 +566,6 @@ impl WalletContext {
                 .call_nft_delete(package_id, nft_to_delete)
                 .build(),
         );
-        self.execute_transaction_block(txn).await.unwrap()
+        self.execute_transaction_must_succeed(txn).await
     }
 }
