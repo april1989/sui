@@ -12,7 +12,7 @@
       "name": "Apache-2.0",
       "url": "https://raw.githubusercontent.com/MystenLabs/sui/main/LICENSE"
     },
-    "version": "1.6.0"
+    "version": "1.5.0"
   },
   "methods": [
     {
@@ -1360,12 +1360,14 @@
                 "disallow_change_struct_type_params_on_upgrade": false,
                 "loaded_child_objects_fixed": true,
                 "missing_type_is_compatibility_error": true,
+                "narwhal_new_leader_election_schedule": false,
                 "narwhal_versioned_metadata": false,
                 "no_extraneous_module_bytes": false,
                 "package_digest_hash_module": false,
                 "package_upgrades": true,
                 "scoring_decision_with_validity_cutoff": true,
                 "simplified_unwrap_then_delete": false,
+                "txn_base_cost_as_multiplier": false,
                 "upgraded_multisig_supported": false,
                 "zklogin_auth": false
               },

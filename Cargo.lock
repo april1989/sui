@@ -4357,6 +4357,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "jsonpath_lib"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eaa63191d68230cccb81c5aa23abd53ed64d83337cacbb25a7b8c7979523774f"
+dependencies = [
+ "log",
+ "serde 1.0.152",
+ "serde_json",
+]
+
+[[package]]
 name = "jsonrpsee"
 version = "0.16.2"
 source = "git+https://github.com/wlmyng/jsonrpsee.git?rev=b1b300784795f6a64d0fcdf8f03081a9bc38bde8#b1b300784795f6a64d0fcdf8f03081a9bc38bde8"
@@ -5938,6 +5949,7 @@ dependencies = [
  "narwhal-storage",
  "narwhal-test-utils",
  "narwhal-types",
+ "parking_lot 0.12.1",
  "pprof",
  "prometheus",
  "rand 0.8.5",
@@ -9244,7 +9256,7 @@ checksum = "734676eb262c623cec13c3155096e08d1f8f29adce39ba17948b18dad1e54142"
 
 [[package]]
 name = "sui"
-version = "1.6.0"
+version = "1.5.0"
 dependencies = [
  "anemo",
  "anyhow",
@@ -9387,6 +9399,7 @@ dependencies = [
  "ed25519-consensus",
  "fastcrypto",
  "futures",
+ "indicatif",
  "integer-encoding",
  "more-asserts",
  "move-binary-format",
@@ -9397,6 +9410,7 @@ dependencies = [
  "prometheus",
  "rand 0.8.5",
  "serde 1.0.152",
+ "sui-config",
  "sui-macros",
  "sui-protocol-config",
  "sui-simulator",
@@ -9530,7 +9544,6 @@ dependencies = [
  "serde_with",
  "serde_yaml 0.8.26",
  "shared-crypto",
- "sui-archival",
  "sui-keys",
  "sui-protocol-config",
  "sui-simulator",
@@ -9652,21 +9665,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sui-cost-tables"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "move-binary-format",
- "move-core-types",
- "move-vm-profiler",
- "move-vm-test-utils",
- "move-vm-types",
- "once_cell",
- "serde 1.0.152",
- "workspace-hack",
-]
-
-[[package]]
 name = "sui-e2e-tests"
 version = "0.1.0"
 dependencies = [
@@ -9762,7 +9760,7 @@ dependencies = [
 
 [[package]]
 name = "sui-faucet"
-version = "1.6.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "async-recursion",
@@ -9891,7 +9889,7 @@ dependencies = [
 
 [[package]]
 name = "sui-indexer"
-version = "1.6.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10098,7 +10096,7 @@ dependencies = [
 
 [[package]]
 name = "sui-move"
-version = "1.6.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -10127,7 +10125,6 @@ dependencies = [
  "serde_json",
  "serde_yaml 0.8.26",
  "sui-core",
- "sui-cost-tables",
  "sui-macros",
  "sui-move-build",
  "sui-move-natives-latest",
@@ -10243,7 +10240,7 @@ dependencies = [
 
 [[package]]
 name = "sui-node"
-version = "1.6.0"
+version = "1.5.0"
 dependencies = [
  "anemo",
  "anemo-tower",
@@ -10287,7 +10284,7 @@ dependencies = [
 
 [[package]]
 name = "sui-open-rpc"
-version = "1.6.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "bcs",
@@ -10321,6 +10318,38 @@ dependencies = [
  "quote 1.0.26",
  "syn 1.0.107",
  "unescape",
+ "workspace-hack",
+]
+
+[[package]]
+name = "sui-oracle"
+version = "1.5.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "bcs",
+ "chrono",
+ "clap 3.2.23",
+ "futures",
+ "jsonpath_lib",
+ "move-core-types",
+ "mysten-metrics",
+ "once_cell",
+ "prometheus",
+ "reqwest",
+ "serde 1.0.152",
+ "serde_json",
+ "serde_with",
+ "sui-config",
+ "sui-json",
+ "sui-json-rpc",
+ "sui-json-rpc-types",
+ "sui-sdk",
+ "sui-types",
+ "tap",
+ "telemetry-subscribers",
+ "tokio",
+ "tracing",
  "workspace-hack",
 ]
 
@@ -10495,7 +10524,7 @@ dependencies = [
 
 [[package]]
 name = "sui-rpc-loadgen"
-version = "1.6.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -10544,7 +10573,7 @@ dependencies = [
 
 [[package]]
 name = "sui-sdk"
-version = "1.6.0"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "async-recursion",
@@ -10668,7 +10697,10 @@ dependencies = [
  "expect-test",
  "fs_extra",
  "hyper",
+ "move-compiler",
+ "move-core-types",
  "move-package",
+ "move-symbol-pool",
  "reqwest",
  "serde 1.0.152",
  "serde_json",
@@ -10734,7 +10766,7 @@ dependencies = [
 
 [[package]]
 name = "sui-surfer"
-version = "1.6.0"
+version = "1.5.0"
 dependencies = [
  "async-trait",
  "bcs",
@@ -10891,7 +10923,7 @@ dependencies = [
 
 [[package]]
 name = "sui-tool"
-version = "1.6.0"
+version = "1.5.0"
 dependencies = [
  "anemo",
  "anemo-cli",
@@ -11019,6 +11051,7 @@ dependencies = [
  "move-disassembler",
  "move-ir-types",
  "move-vm-profiler",
+ "move-vm-test-utils",
  "move-vm-types",
  "mysten-metrics",
  "mysten-network",
@@ -11042,7 +11075,6 @@ dependencies = [
  "static_assertions",
  "strum",
  "strum_macros",
- "sui-cost-tables",
  "sui-enum-compat-util",
  "sui-macros",
  "sui-protocol-config",
@@ -13149,6 +13181,7 @@ dependencies = [
  "jemalloc-sys",
  "jobserver",
  "js-sys",
+ "jsonpath_lib",
  "jsonrpsee",
  "jsonrpsee-client-transport",
  "jsonrpsee-core",

@@ -938,6 +938,7 @@ impl AuthorityStore {
         inner_temporary_store: InnerTemporaryStore,
         transaction: &VerifiedTransaction,
         effects: &TransactionEffects,
+        epoch_id: EpochId,
     ) -> SuiResult {
         let _locks = self
             .acquire_read_locks_for_indirect_objects(&inner_temporary_store)
@@ -954,8 +955,13 @@ impl AuthorityStore {
 
         // Add batched writes for objects and locks.
         let effects_digest = effects.digest();
-        self.update_objects_and_locks(&mut write_batch, inner_temporary_store)
-            .await?;
+        self.update_objects_and_locks(
+            &mut write_batch,
+            inner_temporary_store,
+            transaction,
+            epoch_id,
+        )
+        .await?;
 
         // Store the signed effects of the transaction
         // We can't write this until after sequencing succeeds (which happens in
@@ -1015,6 +1021,8 @@ impl AuthorityStore {
         &self,
         write_batch: &mut DBBatch,
         inner_temporary_store: InnerTemporaryStore,
+        _transaction: &VerifiedTransaction,
+        _epoch_id: EpochId,
     ) -> SuiResult {
         let InnerTemporaryStore {
             objects,
@@ -1626,20 +1634,6 @@ impl AuthorityStore {
         }
 
         let executor = old_epoch_store.executor();
-        let chain_identifier = old_epoch_store.get_chain_identifier();
-
-        let protocol_version = ProtocolVersion::new(
-            self.get_sui_system_state_object()
-                .expect("Read sui system state object cannot fail")
-                .protocol_version(),
-        );
-        let protocol_config =
-            ProtocolConfig::get_for_version(protocol_version, chain_identifier.chain());
-        // Prior to gas model v2, SUI conservation is not guaranteed.
-        if protocol_config.gas_model_version() <= 1 {
-            return Ok(());
-        }
-
         info!("Starting SUI conservation check. This may take a while..");
         let cur_time = Instant::now();
         let mut pending_objects = vec![];
