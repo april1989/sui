@@ -52,7 +52,8 @@ use mysten_common::sync::notify_once::NotifyOnce;
 use mysten_common::sync::notify_read::NotifyRead;
 use mysten_metrics::monitored_scope;
 use prometheus::IntCounter;
-use sui_macros::{fail_point, instrumented_yield};
+use sui_macros::{fail_point};
+use sui_macros::{instrumented_yield};
 use sui_execution::{self, Executor};
 use sui_protocol_config::{ProtocolConfig, ProtocolVersion};
 use sui_storage::mutex_table::{MutexGuard, MutexTable};
@@ -2083,8 +2084,6 @@ impl AuthorityPerEpochStore {
     pub fn record_checkpoint_builder_is_safe_mode_metric(&self, safe_mode: bool) {
         if safe_mode {
             // allow tests to inject a panic here.
-            println!("should fail here: record_checkpoint_builder_is_safe_mode_metric");
-            // instrumented_yield!();
             fail_point!("record_checkpoint_builder_is_safe_mode_metric");
         }
         self.metrics
