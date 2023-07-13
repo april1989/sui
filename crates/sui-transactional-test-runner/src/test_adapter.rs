@@ -48,7 +48,7 @@ use sui_json_rpc::api::QUERY_MAX_RESULT_LIMIT;
 use sui_json_rpc_types::{
     DevInspectResults, EventFilter, SuiExecutionStatus, SuiTransactionBlockEffectsAPI,
 };
-use sui_protocol_config::{Chain, ProtocolConfig};
+use sui_protocol_config::{Chain, ProtocolConfig, ProtocolVersion};
 use sui_types::transaction::Command;
 use sui_types::transaction::ProgrammableTransaction;
 use sui_types::DEEPBOOK_PACKAGE_ID;
@@ -60,7 +60,7 @@ use sui_types::{
     event::Event,
     object::{self, Object, ObjectFormatOptions},
     object::{MoveObject, Owner},
-    transaction::{TransactionData, TransactionDataAPI, VerifiedTransaction},
+    transaction::{Transaction, TransactionData, TransactionDataAPI, VerifiedTransaction},
     MOVE_STDLIB_ADDRESS, SUI_CLOCK_OBJECT_ID, SUI_CLOCK_OBJECT_SHARED_VERSION,
     SUI_FRAMEWORK_ADDRESS, SUI_SYSTEM_STATE_OBJECT_ID,
 };
@@ -156,12 +156,19 @@ pub fn clone_genesis_compiled_modules() -> Vec<Vec<CompiledModule>> {
     GENESIS.modules.clone()
 }
 
-pub fn clone_genesis_packages() -> Vec<Object> {
-    GENESIS.packages.clone()
-}
-
 pub fn clone_genesis_objects() -> Vec<Object> {
     GENESIS.objects.clone()
+}
+
+fn genesis_module_objects_for_protocol_version(protocol_version: ProtocolVersion) -> Vec<Object> {
+    if protocol_version == ProtocolVersion::max() {
+        return GENESIS.packages.clone();
+    }
+    sui_framework_snapshot::load_bytecode_snapshot(protocol_version.as_u64())
+        .expect("Unable to load bytecode snapshot")
+        .into_iter()
+        .map(|pkg| pkg.genesis_object())
+        .collect()
 }
 
 /// Create and return objects wrapping the genesis modules for sui
@@ -270,7 +277,7 @@ impl<'a> MoveTestAdapter<'a> for SuiTestAdapter<'a> {
 
         let mut named_address_mapping = NAMED_ADDRESSES.clone();
 
-        let mut objects = clone_genesis_packages();
+        let mut objects = genesis_module_objects_for_protocol_version(protocol_config.version);
         objects.extend(clone_genesis_objects());
         let mut account_objects = BTreeMap::new();
         let mut accounts = BTreeMap::new();
@@ -653,7 +660,7 @@ impl<'a> MoveTestAdapter<'a> for SuiTestAdapter<'a> {
             }) => {
                 let transaction =
                     VerifiedTransaction::new_consensus_commit_prologue(0, 0, timestamp_ms);
-                let summary = self.execute_txn(transaction).await?;
+                let summary = self.execute_txn(transaction.into()).await?;
                 let output = self.object_summary_output(&summary, /* summarize */ false);
                 Ok(output)
             }
@@ -1058,7 +1065,7 @@ impl<'a> SuiTestAdapter<'a> {
         &self,
         sender: Option<String>,
         txn_data: impl FnOnce(/* sender */ SuiAddress, /* gas */ ObjectRef) -> TransactionData,
-    ) -> VerifiedTransaction {
+    ) -> Transaction {
         let test_account = self.get_sender(sender);
         let gas_payment = self
             .get_object(&test_account.gas, None)
@@ -1078,10 +1085,7 @@ impl<'a> SuiTestAdapter<'a> {
         }
     }
 
-    async fn execute_txn(
-        &mut self,
-        transaction: VerifiedTransaction,
-    ) -> anyhow::Result<TxnSummary> {
+    async fn execute_txn(&mut self, transaction: Transaction) -> anyhow::Result<TxnSummary> {
         let with_shared = transaction
             .data()
             .intent_message()

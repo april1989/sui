@@ -52,6 +52,7 @@ const NUM_SHARDS: usize = 4096;
 struct AuthorityStoreMetrics {
     sui_conservation_check_latency: IntGauge,
     sui_conservation_live_object_count: IntGauge,
+    sui_conservation_live_object_size: IntGauge,
     sui_conservation_imbalance: IntGauge,
     sui_conservation_storage_fund: IntGauge,
     sui_conservation_storage_fund_imbalance: IntGauge,
@@ -69,6 +70,11 @@ impl AuthorityStoreMetrics {
             sui_conservation_live_object_count: register_int_gauge_with_registry!(
                 "sui_conservation_live_object_count",
                 "Number of live objects in the store",
+                registry,
+            ).unwrap(),
+            sui_conservation_live_object_size: register_int_gauge_with_registry!(
+                "sui_conservation_live_object_size",
+                "Size in bytes of live objects in the store",
                 registry,
             ).unwrap(),
             sui_conservation_imbalance: register_int_gauge_with_registry!(
@@ -638,7 +644,7 @@ impl AuthorityStore {
             (
                 idx,
                 match self
-                    .get_object_or_tombstone(key.0)
+                    .get_latest_object_ref_or_tombstone(key.0)
                     .expect("read cannot fail")
                 {
                     None => false,
@@ -1524,11 +1530,23 @@ impl AuthorityStore {
     /// being wrapped in another object.
     ///
     /// If no entry for the object_id is found, return None.
-    pub fn get_object_or_tombstone(
+    pub fn get_latest_object_ref_or_tombstone(
         &self,
         object_id: ObjectID,
     ) -> Result<Option<ObjectRef>, SuiError> {
-        self.perpetual_tables.get_object_or_tombstone(object_id)
+        self.perpetual_tables
+            .get_latest_object_ref_or_tombstone(object_id)
+    }
+
+    /// Returns the latest object we have for this object_id in the objects table.
+    ///
+    /// If no entry for the object_id is found, return None.
+    pub fn get_latest_object_or_tombstone(
+        &self,
+        object_id: ObjectID,
+    ) -> Result<Option<(ObjectKey, StoreObjectWrapper)>, SuiError> {
+        self.perpetual_tables
+            .get_latest_object_or_tombstone(object_id)
     }
 
     pub fn insert_transaction_and_effects(
@@ -1638,14 +1656,16 @@ impl AuthorityStore {
         let cur_time = Instant::now();
         let mut pending_objects = vec![];
         let mut count = 0;
+        let mut size = 0;
         let package_cache = PackageObjectCache::new(self.clone());
         let (mut total_sui, mut total_storage_rebate) = thread::scope(|s| {
             let pending_tasks = FuturesUnordered::new();
             for o in self.iter_live_object_set(false) {
                 match o {
                     LiveObject::Normal(object) => {
-                        pending_objects.push(object);
+                        size += object.object_size_for_gas_metering();
                         count += 1;
+                        pending_objects.push(object);
                         if count % 1_000_000 == 0 {
                             let mut task_objects = vec![];
                             mem::swap(&mut pending_objects, &mut task_objects);
@@ -1694,6 +1714,9 @@ impl AuthorityStore {
         self.metrics
             .sui_conservation_live_object_count
             .set(count as i64);
+        self.metrics
+            .sui_conservation_live_object_size
+            .set(size as i64);
         self.metrics
             .sui_conservation_check_latency
             .set(cur_time.elapsed().as_secs() as i64);
@@ -1876,7 +1899,7 @@ impl ChildObjectResolver for AuthorityStore {
 
 impl ParentSync for AuthorityStore {
     fn get_latest_parent_entry_ref(&self, object_id: ObjectID) -> SuiResult<Option<ObjectRef>> {
-        self.get_object_or_tombstone(object_id)
+        self.get_latest_object_ref_or_tombstone(object_id)
     }
 }
 
