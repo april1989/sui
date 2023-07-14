@@ -63,7 +63,7 @@ use sui_json_rpc_types::{
     SuiMoveValue, SuiObjectDataFilter, SuiTransactionBlockData, SuiTransactionBlockEffects,
     SuiTransactionBlockEvents, TransactionFilter,
 };
-// use sui_macros::{fail_point, fail_point_async};
+use sui_macros::{fail_point, fail_point_async};
 use sui_macros::{instrumented_yield, instrumented_yield_id};
 use sui_protocol_config::{ProtocolConfig, SupportedProtocolVersions};
 use sui_storage::indexes::{CoinInfo, ObjectIndexChanges};

@@ -47,6 +47,9 @@ use sui_types::effects::{TransactionEffects, TransactionEvents};
 use sui_types::gas_coin::TOTAL_SUPPLY_MIST;
 use typed_store::rocks::util::is_ref_count_value;
 
+use sui_macros::{fail_point, fail_point_async};
+use sui_macros::{instrumented_yield};
+
 const NUM_SHARDS: usize = 4096;
 
 struct AuthorityStoreMetrics {
