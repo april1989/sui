@@ -3954,9 +3954,9 @@ impl AuthorityState {
             .expect("read cannot fail")
         {
             warn!("change epoch tx has already been executed via state sync");
-            // return Err(anyhow::anyhow!(
-            //     "change epoch tx has already been executed via state sync"
-            // ));
+            return Err(anyhow::anyhow!(
+                "change epoch tx has already been executed via state sync"
+            ));
         }
 
         let execution_guard = self
