@@ -17,9 +17,9 @@ import { TxnIcon } from './TxnIcon';
 import { DateCard } from '_app/shared/date-card';
 import { Text } from '_app/shared/text';
 import { useGetTxnRecipientAddress } from '_hooks';
+import { useRecognizedPackages } from '_src/ui/app/hooks/useRecognizedPackages';
 
 import type {
-	SuiAddress,
 	// SuiEvent,
 	SuiTransactionBlockResponse,
 	// TransactionEvents,
@@ -30,15 +30,17 @@ export function TransactionCard({
 	address,
 }: {
 	txn: SuiTransactionBlockResponse;
-	address: SuiAddress;
+	address: string;
 }) {
 	const transaction = getTransactionKind(txn)!;
 	const executionStatus = getExecutionStatusType(txn);
 	getTransactionKindName(transaction);
+	const recognizedPackagesList = useRecognizedPackages();
 
 	const summary = useTransactionSummary({
 		transaction: txn,
 		currentAddress: address,
+		recognizedPackagesList,
 	});
 
 	// we only show Sui Transfer amount or the first non-Sui transfer amount

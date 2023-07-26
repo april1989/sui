@@ -332,7 +332,7 @@ authority-store-pruning-config:
 Transaction pruning removes previous transactions and effects from the database.
 Sui periodically creates checkpoints. Each checkpoint contains the transactions that occurred during the checkpoint and their associated effects.
 Sui performs transaction pruning in the background after checkpoints complete.
-You can enable transaction pruning for your Full node or Validator node by adding  `num_epochs_to_retain_for_checkpoints`
+You can enable transaction pruning for your Full node or Validator node by adding  `num-epochs-to-retain-for-checkpoints`
 to the `authority-store-pruning-config` config for the node:
 
 ```yaml
@@ -347,7 +347,7 @@ authority-store-pruning-config:
   # checkpoints up to the `current - N` epoch. Sui never prunes transactions and effects from the current and
   # immediately prior epoch. N = 2 is a recommended setting for Sui Validator nodes and Sui Full nodes that don't 
   # serve RPC requests.
-  num_epochs_to_retain_for_checkpoints: 2
+  num-epochs-to-retain-for-checkpoints: 2
   # Ensures that individual database files periodically go through the compaction process.
   # This helps reclaim disk space and avoid fragmentation issues
   periodic-compaction-threshold-days: 1
@@ -397,8 +397,19 @@ state-archive-write-config:
     aws-region: "<aws_region>"
     object-store-connection-limit: 20
   concurrency: 5
-  # This is needed to be set as true on the node that archives the data
-  # This prevents the node from pruning its local state until the data has been
-  # successfully archived
-  use-for-pruning-watermark: true
+  use-for-pruning-watermark: false
+state-archive-read-config:
+  - object-store-config:
+      object-store: "S3"
+      # Use the same bucket which is being used in `state-archive-write-config`
+      bucket: "<bucket_name>"
+      aws-access-key-id: "<AWS_ACCESS_KEY_ID>"
+      aws-secret-access-key: "<AWS_SECRET_ACCESS_KEY>"
+      aws-region: "<aws_region>"
+      object-store-connection-limit: 20
+    concurrency: 5
+    # This should be set to true in this case. Setting this to true
+    # would prevent pruning of local transaction data until it is archived
+    # in the bucket
+    use-for-pruning-watermark: true
 ```
